@@ -43,7 +43,7 @@
       overflow: hidden;
       position: fixed;
       width: 100vw;
-      height: 100vh;
+      height: 100dvh; /* 修正: 100vhから100dvhに変更して画面内におさめる */
       display: flex;
       flex-direction: column;
     }
@@ -152,7 +152,7 @@
 
     #properties-panel {
       position: absolute;
-      bottom: calc(60px + var(--safe-area-bottom));
+      bottom: calc(70px + var(--safe-area-bottom)); /* 修正: ツールバーの高さ調整に対応 */
       left: 10px;
       right: 10px;
       background: var(--panel-bg);
@@ -308,8 +308,9 @@
     }
 
     toolbar {
-      height: calc(56px + var(--safe-area-bottom));
-      padding-bottom: var(--safe-area-bottom);
+      height: auto; /* 修正: 高さを固定せず自動調整 */
+      min-height: 56px;
+      padding-bottom: var(--safe-area-bottom); /* 修正: セーフエリアの余白のみ付与 */
       background: var(--panel-bg);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
@@ -332,7 +333,7 @@
       font-size: 10px;
       gap: 3px;
       width: 50px;
-      height: 100%;
+      height: 56px; /* 修正: 100%から固定値(56px)に変更してボタンが下へ落ちるのを防ぐ */
     }
 
     .tool-item svg {
