@@ -12,7 +12,7 @@
   <style>
     :root {
       --bg-color: #1c1c1e;
-      --panel-bg: rgba(20, 20, 22, 0.55); /* ぼかしを弱め、後ろの画像が見える透過設定 */
+      --panel-bg: rgba(20, 20, 22, 0.55);
       --header-bg: rgba(30, 30, 32, 0.85);
       --accent-color: #0a84ff;
       --text-color: #ffffff;
@@ -31,7 +31,8 @@
 
     input[type="range"],
     input[type="color"],
-    input[type="text"] {
+    input[type="text"],
+    select {
       touch-action: auto;
       user-select: auto;
       -webkit-user-select: auto;
@@ -51,7 +52,6 @@
       flex-direction: column;
     }
 
-    /* ヘッダー領域 */
     header {
       height: calc(44px + var(--safe-area-top));
       padding-top: var(--safe-area-top);
@@ -103,7 +103,7 @@
     #editor-container {
       flex: 1;
       position: relative;
-      overflow: visible; /* 画像外のオブジェクトを表示する */
+      overflow: visible;
       background-color: #121212;
       min-height: 0;
       touch-action: none;
@@ -118,7 +118,7 @@
       justify-content: center;
       background: var(--bg-color);
       z-index: 50;
-      gap: 20px;
+      gap: 16px;
     }
 
     .file-select-label {
@@ -132,6 +132,11 @@
       box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
     }
 
+    .start-hint {
+      font-size: 12px;
+      color: #8e8e93;
+    }
+
     #image-input {
       display: none;
     }
@@ -142,7 +147,7 @@
       left: 0;
       transform-origin: 0 0;
       will-change: transform;
-      overflow: visible; /* オブジェクトが画像の外側にはみ出ても見えるようにする */
+      overflow: visible;
     }
 
     canvas {
@@ -153,19 +158,18 @@
       overflow: visible;
     }
 
-    /* オブジェクトツール（プロパティパネル：4列構成省スペースレイアウト） */
     #properties-panel {
       position: absolute;
       bottom: calc(52px + (var(--safe-area-bottom) / 2));
       left: 8px;
       right: 8px;
       background: var(--panel-bg);
-      backdrop-filter: blur(3px); /* ぼかしを弱めて背景画像を見やすく調整 */
+      backdrop-filter: blur(3px);
       -webkit-backdrop-filter: blur(3px);
       border-radius: 14px;
       padding: 6px 8px;
       display: grid;
-      grid-template-columns: auto auto auto 1fr; /* 4列レイアウト */
+      grid-template-columns: auto auto auto 1fr;
       gap: 6px;
       align-items: center;
       border: 0.5px solid var(--border-color);
@@ -183,7 +187,6 @@
       display: none;
     }
 
-    /* 項目名やテキストの可読性向上 */
     .panel-label {
       font-size: 11px;
       color: #e0e0e5;
@@ -193,7 +196,6 @@
       font-weight: 500;
     }
 
-    /* 第1列：その他のボタン（削除・影） */
     .panel-col-misc {
       display: flex;
       flex-direction: column;
@@ -204,7 +206,6 @@
       padding-right: 6px;
     }
 
-    /* 第2列：カラー（縦3×横3＝最大9要素） */
     .panel-col-colors {
       display: flex;
       align-items: center;
@@ -238,7 +239,6 @@
       box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.8);
     }
 
-    /* カスタムカラー選択ボタンの見た目を改善 */
     .color-picker-wrapper {
       position: relative;
       width: 22px;
@@ -278,7 +278,6 @@
       cursor: pointer;
     }
 
-    /* 第3列：十字キー */
     .panel-col-nudge {
       display: flex;
       align-items: center;
@@ -320,7 +319,6 @@
     #nudge-right { grid-column: 3; grid-row: 2; }
     #nudge-down { grid-column: 2; grid-row: 3; }
 
-    /* 第4列：スライダー（縦並び配置） */
     .panel-col-sliders {
       display: flex;
       flex-direction: column;
@@ -336,7 +334,6 @@
       min-height: 24px;
     }
 
-    /* 文字入力ラッパー */
     .input-wrapper {
       position: relative;
       flex: 1;
@@ -373,12 +370,27 @@
       cursor: pointer;
     }
 
-    /* スライダー調整 */
     input[type="range"] {
       flex: 1;
       min-width: 40px;
       accent-color: var(--accent-color);
       height: 18px;
+    }
+
+    .font-select {
+      flex: 1;
+      min-width: 0;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      border-radius: 4px;
+      font-size: 12px;
+      padding: 2px 4px;
+      height: 22px;
+      line-height: 1.2;
+      -webkit-appearance: none;
+      appearance: none;
+      text-align: center;
     }
 
     .toggle-btn {
@@ -399,7 +411,6 @@
       background: var(--accent-color);
     }
 
-    /* ゴミ箱ボタン */
     .btn-icon-delete {
       background: rgba(255, 69, 58, 0.35);
       color: #ff453a;
@@ -418,7 +429,6 @@
       background: rgba(255, 69, 58, 0.6);
     }
 
-    /* フッターメニュー */
     toolbar {
       height: calc(48px + (var(--safe-area-bottom) / 2));
       padding-bottom: calc(var(--safe-area-bottom) / 2);
@@ -443,9 +453,11 @@
       color: #a0a0a5;
       font-size: 10px;
       gap: 2px;
-      width: 60px;
+      flex: 1 1 0;
+      min-width: 0;
       height: 100%;
       text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      cursor: pointer;
     }
 
     .tool-item svg {
@@ -502,6 +514,33 @@
       font-size: 15px;
       font-weight: 600;
     }
+
+    /* ドラッグ&ドロップ用オーバーレイ */
+    #drop-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 132, 255, 0.22);
+      pointer-events: none;
+    }
+
+    #drop-overlay.active {
+      display: flex;
+    }
+
+    #drop-overlay .drop-inner {
+      border: 3px dashed rgba(255, 255, 255, 0.85);
+      border-radius: 20px;
+      padding: 28px 40px;
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.35);
+    }
   </style>
 </head>
 <body>
@@ -522,6 +561,7 @@
   <div id="editor-container">
     <div id="start-screen">
       <label class="file-select-label" for="image-input">写真を選択</label>
+      <div class="start-hint">または画像をここにドラッグ＆ドロップ</div>
       <input type="file" id="image-input" accept="image/*">
     </div>
 
@@ -541,7 +581,7 @@
       <button id="btn-shadow-toggle" class="toggle-btn active" style="padding: 2px 4px; font-size: 10px;">影</button>
     </div>
 
-    <!-- 列2: カラー（縦3×横3の9マスグリッド：プリセット＋履歴＋カスタムカラー） -->
+    <!-- 列2: カラー（縦3×横3の9マスグリッド） -->
     <div class="panel-col-colors">
       <div id="color-grid" class="color-grid"></div>
     </div>
@@ -558,6 +598,12 @@
 
     <!-- 列4: スライダー（縦に並べるレイアウト） -->
     <div class="panel-col-sliders">
+      <!-- フォント選択（テキストのみ） -->
+      <div class="panel-row" id="font-prop-row">
+        <span class="panel-label">書体</span>
+        <select id="font-select" class="font-select"></select>
+      </div>
+
       <!-- テキスト操作用 -->
       <div class="panel-row" id="text-prop-row">
         <span class="panel-label">文字</span>
@@ -576,7 +622,7 @@
         <input type="range" id="outline-slider" min="0" max="20" value="20">
       </div>
 
-      <!-- 四角形用: 角丸 & 正方形固定 -->
+      <!-- 四角形／隠す用: 角丸 & 正方形固定 -->
       <div class="panel-row" id="radius-prop-row">
         <span class="panel-label">角丸</span>
         <input type="range" id="radius-slider" min="0" max="100" value="100">
@@ -608,6 +654,10 @@
       <svg viewBox="0 0 24 24"><path d="M16.01 11H4v2h12.01v3L20 12l-3.99-4v3z"/></svg>
       矢印
     </button>
+    <button class="tool-item" data-tool="hide">
+      <svg viewBox="0 0 24 24"><path d="M5 4h14a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5z"/><path d="M7.1 17.3l10.2-10.2 1.4 1.4L8.5 18.7z"/></svg>
+      隠す
+    </button>
   </toolbar>
 
   <div id="save-modal">
@@ -616,23 +666,40 @@
     <button class="close-modal-btn" id="btn-close-modal">閉じる</button>
   </div>
 
+  <div id="drop-overlay"><div class="drop-inner">画像をドロップして読み込み</div></div>
+
   <script>
     // -------------------------------------------------------------
     // 定数
     // -------------------------------------------------------------
     const PRESET_COLORS = [
       { name: '赤', val: '#e63946' },
-      { name: '黒', val: '#000000' }
+      { name: '黒', val: '#000000' },
+      { name: '白', val: '#ffffff' }
     ];
 
     const RECENT_COLORS_KEY = 'cocomark_recent_colors';
-    const MAX_RECENT_COLORS = 6; // 3x3 グリッドに合わせて履歴の上限を最大6個に変更
+    const MAX_RECENT_COLORS = 5; // 3x3 グリッド（プリセット3 + 履歴5 + ピッカー1）
 
     const MAX_TEXT_SIZE = 160;
     const MAX_STROKE_WIDTH = 40;
     const MAX_OUTLINE_WIDTH = 20;
     const MAX_ARROW_SIZE = 90;
     const MAX_BORDER_RADIUS_PERCENT = 100;
+
+    const HIDE_FILL_MAX = 96;      // 「隠す」塗りつぶしの内部解像度
+    const SOURCE_SAMPLE_MAX = 1600; // サンプリング用ソース画像の最大辺
+
+    const FONT_OPTIONS = [
+      { label: 'システム', value: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif' },
+      { label: 'ゴシック体', value: '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif' },
+      { label: '明朝体', value: '"Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif' },
+      { label: '丸ゴシック', value: '"Hiragino Maru Gothic ProN", "Yu Gothic Medium", "Arial Rounded MT Bold", sans-serif' },
+      { label: '等幅', value: '"SF Mono", Menlo, Consolas, "Courier New", monospace' },
+      { label: '手書き風', value: '"Bradley Hand", "Comic Sans MS", "Yomogi", cursive' },
+      { label: '筆記体', value: '"Snell Roundhand", "Zapfino", "Segoe Script", cursive' }
+    ];
+    const DEFAULT_FONT = FONT_OPTIONS[0].value;
 
     // -------------------------------------------------------------
     // 状態
@@ -655,11 +722,13 @@
         strokeWidth: MAX_STROKE_WIDTH,
         textSize: MAX_TEXT_SIZE,
         borderRadius: MAX_BORDER_RADIUS_PERCENT,
+        hideRadius: 0,
         outlineWidth: MAX_OUTLINE_WIDTH,
         arrowSize: MAX_ARROW_SIZE,
         isBold: true,
         hasShadow: true,
-        text: '文字入力'
+        text: '文字入力',
+        fontFamily: DEFAULT_FONT
       }
     };
 
@@ -675,6 +744,7 @@
     const imageInput = document.getElementById('image-input');
     const startScreen = document.getElementById('start-screen');
     const propertiesPanel = document.getElementById('properties-panel');
+    const colorColumn = document.querySelector('.panel-col-colors');
 
     const btnUndo = document.getElementById('btn-undo');
     const btnRedo = document.getElementById('btn-redo');
@@ -684,6 +754,7 @@
     const textContentInput = document.getElementById('text-content-input');
     const btnClearText = document.getElementById('btn-clear-text');
     const btnBold = document.getElementById('btn-bold');
+    const fontSelect = document.getElementById('font-select');
     const sizeSlider = document.getElementById('size-slider');
     const sizeLabel = document.getElementById('size-label');
     const outlineSlider = document.getElementById('outline-slider');
@@ -694,8 +765,40 @@
     const saveModal = document.getElementById('save-modal');
     const savePreview = document.getElementById('save-preview');
     const btnCloseModal = document.getElementById('btn-close-modal');
+    const dropOverlay = document.getElementById('drop-overlay');
 
     const measureCtx = document.createElement('canvas').getContext('2d');
+
+    // ソース画像のピクセルデータ（「隠す」塗りつぶし用）
+    let srcPixels = null;
+    // 「隠す」塗りつぶしキャッシュ（WeakMap なので履歴JSONに混入しない）
+    const hideFillCache = new WeakMap();
+
+    // -------------------------------------------------------------
+    // ユーティリティ
+    // -------------------------------------------------------------
+    function clampI(v, min, max) {
+      return v < min ? min : (v > max ? max : v);
+    }
+
+    function fontString(a) {
+      return `${a.isBold ? 'bold' : 'normal'} ${a.size}px ${a.fontFamily || DEFAULT_FONT}`;
+    }
+
+    function pathRoundedRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      if (r <= 0) {
+        ctx.rect(x, y, w, h);
+        return;
+      }
+      const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
 
     // -------------------------------------------------------------
     // 最前面へ移動
@@ -710,7 +813,7 @@
     }
 
     // -------------------------------------------------------------
-    // 最近使った色 & パレット管理（色が干渉しないよう改善）
+    // 最近使った色 & パレット管理
     // -------------------------------------------------------------
     function loadRecentColors() {
       try {
@@ -743,8 +846,7 @@
 
     function renderColorPalette() {
       colorGridContainer.innerHTML = '';
-      
-      // プリセット + 最近使用した色
+
       const list = [
         ...PRESET_COLORS.map(p => p.val),
         ...state.recentColors
@@ -762,14 +864,13 @@
         colorGridContainer.appendChild(swatch);
       });
 
-      // カスタムカラーピッカーボタン
       const pickerWrapper = document.createElement('div');
       pickerWrapper.className = 'color-picker-wrapper';
       pickerWrapper.title = 'カスタムカラー';
 
       const pickerInput = document.createElement('input');
       pickerInput.type = 'color';
-      
+
       const selectedAnno = state.annotations.find(a => a.id === state.selectedId);
       pickerInput.value = selectedAnno ? selectedAnno.color : state.defaults.color;
 
@@ -796,6 +897,8 @@
     function init() {
       loadRecentColors();
       renderColorPalette();
+      setupFontSelect();
+      setupDragAndDrop();
 
       document.querySelectorAll('.tool-item[data-tool]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -819,12 +922,22 @@
       saveHistory();
     }
 
+    function setupFontSelect() {
+      FONT_OPTIONS.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.value;
+        opt.textContent = f.label;
+        opt.style.fontFamily = f.value;
+        fontSelect.appendChild(opt);
+      });
+      fontSelect.value = state.defaults.fontFamily;
+    }
+
     // -------------------------------------------------------------
     // 画像読み込み
     // -------------------------------------------------------------
-    imageInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+    function loadImageFile(file) {
+      if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
 
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -841,9 +954,13 @@
 
           bgCtx.drawImage(img, 0, 0);
 
+          cacheSourcePixels();
+
           startScreen.style.display = 'none';
           state.annotations = [];
           state.selectedId = null;
+          state.history = [];
+          state.historyIndex = -1;
 
           requestAnimationFrame(() => {
             fitViewportToScreen();
@@ -856,7 +973,68 @@
         img.src = event.target.result;
       };
       reader.readAsDataURL(file);
+    }
+
+    imageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) loadImageFile(file);
+      e.target.value = '';
     });
+
+    // ドラッグ&ドロップ対応
+    let dragDepth = 0;
+
+    function setupDragAndDrop() {
+      window.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer) return;
+        e.preventDefault();
+        dragDepth++;
+        dropOverlay.classList.add('active');
+      });
+
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      });
+
+      window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) dropOverlay.classList.remove('active');
+      });
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragDepth = 0;
+        dropOverlay.classList.remove('active');
+
+        const dt = e.dataTransfer;
+        if (!dt) return;
+
+        let file = null;
+        if (dt.files && dt.files.length > 0) {
+          for (let i = 0; i < dt.files.length; i++) {
+            if (dt.files[i].type && dt.files[i].type.indexOf('image/') === 0) {
+              file = dt.files[i];
+              break;
+            }
+          }
+        }
+        if (!file && dt.items) {
+          for (let i = 0; i < dt.items.length; i++) {
+            const it = dt.items[i];
+            if (it.kind === 'file') {
+              const f = it.getAsFile();
+              if (f && f.type && f.type.indexOf('image/') === 0) {
+                file = f;
+                break;
+              }
+            }
+          }
+        }
+        if (file) loadImageFile(file);
+      });
+    }
 
     function fitViewportToScreen() {
       const containerW = editorContainer.clientWidth;
@@ -885,6 +1063,126 @@
     }
 
     // -------------------------------------------------------------
+    // 「隠す」用: ソースピクセルのキャッシュと塗りつぶし生成
+    // -------------------------------------------------------------
+    function cacheSourcePixels() {
+      srcPixels = null;
+      if (!state.image) return;
+
+      const iw = state.imgWidth;
+      const ih = state.imgHeight;
+      if (!iw || !ih) return;
+
+      const sc = Math.min(1, SOURCE_SAMPLE_MAX / Math.max(iw, ih));
+      const w = Math.max(1, Math.round(iw * sc));
+      const h = Math.max(1, Math.round(ih * sc));
+
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(state.image, 0, 0, w, h);
+
+      try {
+        const img = cx.getImageData(0, 0, w, h);
+        srcPixels = {
+          data: img.data,
+          width: w,
+          height: h,
+          sx: w / iw,
+          sy: h / ih
+        };
+      } catch (err) {
+        srcPixels = null;
+      }
+    }
+
+    /**
+     * 矩形の外側4辺の色を内側へ引き伸ばしてブレンドする塗りつぶし画像を作る。
+     * グラデーション背景なら上下／左右の色が自然に繋がり、
+     * 写真などの複雑な背景でも滑らかに覆い隠せる。
+     */
+    function buildHideFillCanvas(x0, y0, w, h) {
+      const sc = Math.min(1, HIDE_FILL_MAX / Math.max(w, h));
+      const sw = Math.max(2, Math.round(w * sc));
+      const sh = Math.max(2, Math.round(h * sc));
+
+      const cnv = document.createElement('canvas');
+      cnv.width = sw;
+      cnv.height = sh;
+      const ctx = cnv.getContext('2d');
+
+      if (!srcPixels) {
+        // 画像データが取れない場合は透明のまま（何も覆わない）
+        return cnv;
+      }
+
+      const out = ctx.createImageData(sw, sh);
+      const od = out.data;
+
+      const data = srcPixels.data;
+      const iw = srcPixels.width;
+      const ih = srcPixels.height;
+      const kx = srcPixels.sx;
+      const ky = srcPixels.sy;
+
+      // サンプリング位置（矩形のすぐ外側）
+      const xL = (x0 - 1) * kx;
+      const xR = (x0 + w + 1) * kx;
+      const yT = (y0 - 1) * ky;
+      const yB = (y0 + h + 1) * ky;
+
+      const rowTop = clampI(Math.round(yT), 0, ih - 1) * iw;
+      const rowBot = clampI(Math.round(yB), 0, ih - 1) * iw;
+      const colLeft = clampI(Math.round(xL), 0, iw - 1);
+      const colRight = clampI(Math.round(xR), 0, iw - 1);
+
+      for (let j = 0; j < sh; j++) {
+        const py = (j + 0.5) / sh;
+        const wb = py;
+        const wt = 1 - py;
+        const rowS = clampI(Math.round((y0 + py * h) * ky), 0, ih - 1) * iw;
+        const base = j * sw;
+
+        for (let i = 0; i < sw; i++) {
+          const px = (i + 0.5) / sw;
+          const wr = px;
+          const wl = 1 - px;
+          const ixS = clampI(Math.round((x0 + px * w) * kx), 0, iw - 1);
+
+          const tI = (rowTop + ixS) << 2;
+          const bI = (rowBot + ixS) << 2;
+          const lI = (rowS + colLeft) << 2;
+          const rI = (rowS + colRight) << 2;
+
+          const o = (base + i) << 2;
+          od[o]     = (data[tI]     * wt + data[bI]     * wb + data[lI]     * wl + data[rI]     * wr) * 0.5;
+          od[o + 1] = (data[tI + 1] * wt + data[bI + 1] * wb + data[lI + 1] * wl + data[rI + 1] * wr) * 0.5;
+          od[o + 2] = (data[tI + 2] * wt + data[bI + 2] * wb + data[lI + 2] * wl + data[rI + 2] * wr) * 0.5;
+          od[o + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(out, 0, 0);
+      return cnv;
+    }
+
+    function getHideFill(a) {
+      const x0 = Math.min(a.x, a.x + a.w);
+      const y0 = Math.min(a.y, a.y + a.h);
+      const w = Math.max(1, Math.abs(a.w));
+      const h = Math.max(1, Math.abs(a.h));
+
+      const key = `${Math.round(x0)}_${Math.round(y0)}_${Math.round(w)}_${Math.round(h)}`;
+      const cached = hideFillCache.get(a);
+      if (cached && cached.key === key) return cached.canvas;
+
+      const canvas = buildHideFillCanvas(x0, y0, w, h);
+      hideFillCache.set(a, { key, canvas });
+      return canvas;
+    }
+
+    // -------------------------------------------------------------
     // 座標計算
     // -------------------------------------------------------------
     function getCanvasCoords(e) {
@@ -901,13 +1199,13 @@
     }
 
     function measureTextAnno(a) {
-      measureCtx.font = `${a.isBold ? 'bold' : 'normal'} ${a.size}px -apple-system, sans-serif`;
+      measureCtx.font = fontString(a);
       const w = measureCtx.measureText(a.text).width;
       return { w, h: a.size };
     }
 
     function getRotCenter(a) {
-      if (a.type === 'rect') {
+      if (a.type === 'rect' || a.type === 'hide') {
         return { x: a.x + a.w / 2, y: a.y + a.h / 2 };
       }
       if (a.type === 'text') {
@@ -1100,6 +1398,7 @@
             isBold: state.defaults.isBold,
             hasShadow: state.defaults.hasShadow,
             outlineWidth: state.defaults.outlineWidth,
+            fontFamily: state.defaults.fontFamily,
             rotation: 0
           };
           state.annotations.push(newAnno);
@@ -1122,6 +1421,22 @@
             outlineWidth: state.defaults.outlineWidth,
             borderRadius: state.defaults.borderRadius,
             hasShadow: state.defaults.hasShadow,
+            rotation: 0
+          };
+          state.annotations.push(currentAnnotation);
+          pendingSelectId = id;
+          bringToFront(id);
+          renderAnnotations();
+          return;
+        }
+
+        if (state.activeTool === 'hide') {
+          isDrawing = true;
+          currentAnnotation = {
+            id, type: 'hide',
+            x: coords.x, y: coords.y,
+            w: 1, h: 1,
+            borderRadius: state.defaults.hideRadius,
             rotation: 0
           };
           state.annotations.push(currentAnnotation);
@@ -1208,7 +1523,7 @@
       const coords = getCanvasCoords(e);
 
       if (isDrawing && currentAnnotation) {
-        if (currentAnnotation.type === 'rect') {
+        if (currentAnnotation.type === 'rect' || currentAnnotation.type === 'hide') {
           currentAnnotation.w = coords.x - startImageCoords.x;
           currentAnnotation.h = coords.y - startImageCoords.y;
         } else if (currentAnnotation.type === 'arrow') {
@@ -1226,7 +1541,7 @@
         const dx = coords.x - startImageCoords.x;
         const dy = coords.y - startImageCoords.y;
 
-        if (selectedAnno.type === 'rect') {
+        if (selectedAnno.type === 'rect' || selectedAnno.type === 'hide') {
           if (transformHandle === 'rot') {
             const cur = Math.atan2(
               coords.y - initialRotCenter.y,
@@ -1263,7 +1578,7 @@
         const dx = coords.x - startImageCoords.x;
         const dy = coords.y - startImageCoords.y;
 
-        if (selectedAnno.type === 'rect' || selectedAnno.type === 'text') {
+        if (selectedAnno.type === 'rect' || selectedAnno.type === 'hide' || selectedAnno.type === 'text') {
           selectedAnno.x = initialObjState.x + dx;
           selectedAnno.y = initialObjState.y + dy;
         } else if (selectedAnno.type === 'arrow') {
@@ -1355,7 +1670,8 @@
       if (isDrawing || isDraggingObj || isTransformingObj) {
         let discard = false;
 
-        if (currentAnnotation && currentAnnotation.type === 'rect') {
+        if (currentAnnotation &&
+            (currentAnnotation.type === 'rect' || currentAnnotation.type === 'hide')) {
           if (currentAnnotation.w < 0) {
             currentAnnotation.x += currentAnnotation.w;
             currentAnnotation.w = Math.abs(currentAnnotation.w);
@@ -1368,7 +1684,7 @@
 
         if (isDrawing && currentAnnotation) {
           const a = currentAnnotation;
-          if (a.type === 'rect') {
+          if (a.type === 'rect' || a.type === 'hide') {
             discard = Math.abs(a.w) < 8 || Math.abs(a.h) < 8;
           } else if (a.type === 'arrow') {
             discard = Math.hypot(a.x2 - a.x1, a.y2 - a.y1) < 8;
@@ -1411,7 +1727,7 @@
       for (let i = state.annotations.length - 1; i >= 0; i--) {
         const a = state.annotations[i];
 
-        if (a.type === 'rect') {
+        if (a.type === 'rect' || a.type === 'hide') {
           const c = getRotCenter(a);
           const rad = -(a.rotation || 0) * Math.PI / 180;
           const dx = coords.x - c.x;
@@ -1456,7 +1772,7 @@
       const handles = [];
       const off = 34 / state.scale;
 
-      if (a.type === 'rect') {
+      if (a.type === 'rect' || a.type === 'hide') {
         const corners = [
           { id: 'nw', x: a.x, y: a.y },
           { id: 'ne', x: a.x + a.w, y: a.y },
@@ -1516,6 +1832,8 @@
           }
           drawRoundedRect(annoCtx, a);
           annoCtx.restore();
+        } else if (a.type === 'hide') {
+          drawHide(annoCtx, a);
         } else if (a.type === 'arrow') {
           annoCtx.save();
           if (a.hasShadow) {
@@ -1540,33 +1858,15 @@
 
     function drawRoundedRect(ctx, a) {
       withRotation(ctx, a, () => {
-        const x = a.x;
-        const y = a.y;
-        const w = a.w;
-        const h = a.h;
-        const absW = Math.abs(w);
-        const absH = Math.abs(h);
-
-        const maxR = Math.min(absW, absH) / 2;
+        const x0 = Math.min(a.x, a.x + a.w);
+        const y0 = Math.min(a.y, a.y + a.h);
+        const w = Math.abs(a.w);
+        const h = Math.abs(a.h);
+        const maxR = Math.min(w, h) / 2;
         const pct = (a.borderRadius != null ? a.borderRadius : 0) / 100;
-        let r = Math.max(0, Math.min(maxR, maxR * pct));
+        const r = Math.max(0, Math.min(maxR, maxR * pct));
 
-        ctx.beginPath();
-        if (r <= 0) {
-          ctx.rect(x, y, w, h);
-        } else {
-          const x1 = Math.min(x, x + w);
-          const x2 = Math.max(x, x + w);
-          const y1 = Math.min(y, y + h);
-          const y2 = Math.max(y, y + h);
-
-          ctx.moveTo(x1 + r, y1);
-          ctx.arcTo(x2, y1, x2, y2, r);
-          ctx.arcTo(x2, y2, x1, y2, r);
-          ctx.arcTo(x1, y2, x1, y1, r);
-          ctx.arcTo(x1, y1, x2, y1, r);
-          ctx.closePath();
-        }
+        pathRoundedRect(ctx, x0, y0, w, h, r);
 
         ctx.lineJoin = 'round';
 
@@ -1580,6 +1880,30 @@
         ctx.strokeStyle = a.color;
         ctx.lineWidth = a.strokeWidth;
         ctx.stroke();
+      });
+    }
+
+    // 「隠す」: 背景と馴染む塗りで覆う
+    function drawHide(ctx, a) {
+      const x0 = Math.min(a.x, a.x + a.w);
+      const y0 = Math.min(a.y, a.y + a.h);
+      const w = Math.abs(a.w);
+      const h = Math.abs(a.h);
+      if (w < 0.5 || h < 0.5) return;
+
+      const fill = getHideFill(a);
+      if (!fill || !fill.width) return;
+
+      withRotation(ctx, a, () => {
+        const maxR = Math.min(w, h) / 2;
+        const pct = (a.borderRadius != null ? a.borderRadius : 0) / 100;
+        const r = Math.max(0, Math.min(maxR, maxR * pct));
+
+        ctx.save();
+        pathRoundedRect(ctx, x0, y0, w, h, r);
+        ctx.clip();
+        ctx.drawImage(fill, 0, 0, fill.width, fill.height, x0, y0, w, h);
+        ctx.restore();
       });
     }
 
@@ -1619,10 +1943,9 @@
       ctx.stroke();
     }
 
-    // 文字の描画（フチを大きくしても影が肥大化しないように適正化）
     function drawText(ctx, a) {
       withRotation(ctx, a, () => {
-        ctx.font = `${a.isBold ? 'bold' : 'normal'} ${a.size}px -apple-system, sans-serif`;
+        ctx.font = fontString(a);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
@@ -1630,7 +1953,7 @@
         const outline = (a.outlineWidth != null) ? a.outlineWidth : 2;
         const hasShadow = a.hasShadow !== false;
 
-        // 1. 影の独立描画（フチの厚みに影響されないよう一定のストローク幅で影のみ付与）
+        // 1. 影（フチの太さに影響されないよう控えめに）
         if (hasShadow) {
           ctx.save();
           ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
@@ -1640,7 +1963,6 @@
 
           if (outline > 0) {
             ctx.strokeStyle = 'rgba(0, 0, 0, 1)';
-            // 影用に固定された控えめな太さで描画し、フチ拡大による影の膨らみを抑える
             ctx.lineWidth = Math.min(outline * 2, 6);
             ctx.strokeText(a.text, a.x, a.y);
           } else {
@@ -1650,7 +1972,7 @@
           ctx.restore();
         }
 
-        // 2. 本体の描画（白フチおよびテキスト本体）
+        // 2. 本体（白フチ＋塗り）
         if (outline > 0) {
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = outline * 2;
@@ -1670,7 +1992,7 @@
 
       const handleR = 7 / state.scale;
 
-      if (a.type === 'rect') {
+      if (a.type === 'rect' || a.type === 'hide') {
         withRotation(annoCtx, a, () => {
           annoCtx.strokeRect(a.x, a.y, a.w, a.h);
         });
@@ -1685,7 +2007,7 @@
       handles.forEach(h => {
         if (h.id === 'rot') {
           let base;
-          if (a.type === 'rect') {
+          if (a.type === 'rect' || a.type === 'hide') {
             base = localToWorld(a, a.x + a.w / 2, a.y);
           } else {
             base = localToWorld(a, a.x, a.y - a.size / 2);
@@ -1733,7 +2055,7 @@
       if (!a) return;
 
       let objCenterY;
-      if (a.type === 'rect') objCenterY = a.y + a.h / 2;
+      if (a.type === 'rect' || a.type === 'hide') objCenterY = a.y + a.h / 2;
       else if (a.type === 'text') objCenterY = a.y;
       else if (a.type === 'arrow') objCenterY = (a.y1 + a.y2) / 2;
       else objCenterY = 0;
@@ -1761,6 +2083,13 @@
 
       propertiesPanel.classList.remove('hidden');
 
+      // 「隠す」のときはカラー列を隠してレイアウトを詰める
+      const isHide = (a.type === 'hide');
+      colorColumn.style.display = isHide ? 'none' : 'flex';
+      propertiesPanel.style.gridTemplateColumns = isHide
+        ? 'auto auto 1fr'
+        : 'auto auto auto 1fr';
+
       renderColorPalette();
 
       document.querySelectorAll('.color-swatch').forEach(s => {
@@ -1771,9 +2100,12 @@
         }
       });
 
+      document.getElementById('font-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
       document.getElementById('text-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
-      document.getElementById('radius-prop-row').style.display = (a.type === 'rect') ? 'flex' : 'none';
+      document.getElementById('radius-prop-row').style.display =
+        (a.type === 'rect' || a.type === 'hide') ? 'flex' : 'none';
       document.getElementById('arrow-prop-row').style.display = (a.type === 'arrow') ? 'flex' : 'none';
+      document.getElementById('size-prop-row').style.display = (a.type === 'hide') ? 'none' : 'flex';
 
       if (a.type === 'text') {
         textContentInput.value = a.text;
@@ -1782,14 +2114,15 @@
         sizeSlider.min = 12;
         sizeSlider.max = MAX_TEXT_SIZE;
         sizeSlider.value = a.size;
-      } else {
+        fontSelect.value = a.fontFamily || state.defaults.fontFamily;
+      } else if (a.type !== 'hide') {
         sizeLabel.textContent = '線幅';
         sizeSlider.min = 1;
         sizeSlider.max = MAX_STROKE_WIDTH;
         sizeSlider.value = a.strokeWidth;
       }
 
-      if (a.type === 'rect') {
+      if (a.type === 'rect' || a.type === 'hide') {
         radiusSlider.value = (a.borderRadius != null) ? a.borderRadius : 0;
       }
       if (a.type === 'arrow') {
@@ -1800,6 +2133,7 @@
       outlineSlider.value = (a.outlineWidth != null) ? a.outlineWidth : 2;
 
       btnShadowToggle.classList.toggle('active', !!a.hasShadow);
+      btnShadowToggle.style.display = isHide ? 'none' : 'flex';
 
       positionPanel();
     }
@@ -1856,6 +2190,17 @@
       }
     });
 
+    fontSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      state.defaults.fontFamily = val;
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (a && a.type === 'text') {
+        a.fontFamily = val;
+        saveHistory();
+        renderAnnotations();
+      }
+    });
+
     sizeSlider.addEventListener('input', (e) => {
       const a = state.annotations.find(x => x.id === state.selectedId);
       if (!a) return;
@@ -1887,9 +2232,10 @@
 
     radiusSlider.addEventListener('input', (e) => {
       const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'rect') {
+      if (a && (a.type === 'rect' || a.type === 'hide')) {
         a.borderRadius = Number(e.target.value);
-        state.defaults.borderRadius = a.borderRadius;
+        if (a.type === 'rect') state.defaults.borderRadius = a.borderRadius;
+        else state.defaults.hideRadius = a.borderRadius;
         renderAnnotations();
       }
     });
@@ -1907,7 +2253,7 @@
 
     btnAspectSquare.addEventListener('click', () => {
       const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'rect') {
+      if (a && (a.type === 'rect' || a.type === 'hide')) {
         const minSide = Math.min(Math.abs(a.w), Math.abs(a.h));
         const cx = a.x + a.w / 2;
         const cy = a.y + a.h / 2;
@@ -1939,7 +2285,7 @@
     function applyNudge(dx, dy) {
       const a = state.annotations.find(x => x.id === state.selectedId);
       if (!a) return;
-      if (a.type === 'rect' || a.type === 'text') {
+      if (a.type === 'rect' || a.type === 'hide' || a.type === 'text') {
         a.x += dx;
         a.y += dy;
       } else if (a.type === 'arrow') {
@@ -1989,7 +2335,6 @@
       });
     }
 
-    // ゴミ箱（削除）ボタン処理
     btnDelete.addEventListener('click', () => {
       if (state.selectedId) {
         state.annotations = state.annotations.filter(a => a.id !== state.selectedId);
@@ -2024,6 +2369,8 @@
           }
           drawRoundedRect(exportCtx, a);
           exportCtx.restore();
+        } else if (a.type === 'hide') {
+          drawHide(exportCtx, a);
         } else if (a.type === 'arrow') {
           exportCtx.save();
           if (a.hasShadow) {
