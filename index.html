@@ -12,7 +12,7 @@
   <style>
     :root {
       --bg-color: #1c1c1e;
-      --panel-bg: rgba(20, 20, 22, 0.55);
+      --panel-bg: rgba(20, 20, 22, 0.6);
       --header-bg: rgba(30, 30, 32, 0.85);
       --accent-color: #0a84ff;
       --text-color: #ffffff;
@@ -164,8 +164,8 @@
       left: 8px;
       right: 8px;
       background: var(--panel-bg);
-      backdrop-filter: blur(3px);
-      -webkit-backdrop-filter: blur(3px);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       border-radius: 14px;
       padding: 6px 8px;
       display: grid;
@@ -175,12 +175,8 @@
       border: 0.5px solid var(--border-color);
       box-shadow: 0 8px 24px rgba(0,0,0,0.6);
       z-index: 90;
-      transition: top 0.18s ease, bottom 0.18s ease;
-    }
-
-    #properties-panel.at-top {
-      bottom: auto;
-      top: calc(52px + var(--safe-area-top));
+      max-height: 50vh;
+      overflow-y: auto;
     }
 
     #properties-panel.hidden {
@@ -429,6 +425,47 @@
       background: rgba(255, 69, 58, 0.6);
     }
 
+    .btn-icon-dup {
+      background: rgba(10, 132, 255, 0.35);
+      color: #0a84ff;
+      border: 1px solid rgba(10, 132, 255, 0.5);
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .btn-icon-dup:active {
+      background: rgba(10, 132, 255, 0.6);
+    }
+
+    #btn-bg-remove {
+      flex: 1;
+      padding: 4px 8px;
+      font-size: 11px;
+      background: rgba(255, 149, 0, 0.3);
+      border: 1px solid rgba(255, 149, 0, 0.55);
+      color: #ffb340;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      line-height: 1.2;
+      text-align: center;
+    }
+
+    #btn-bg-remove:active {
+      background: rgba(255, 149, 0, 0.55);
+    }
+
+    #btn-bg-remove:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
     toolbar {
       height: calc(48px + (var(--safe-area-bottom) / 2));
       padding-bottom: calc(var(--safe-area-bottom) / 2);
@@ -515,7 +552,6 @@
       font-weight: 600;
     }
 
-    /* ドラッグ&ドロップ用オーバーレイ */
     #drop-overlay {
       position: fixed;
       inset: 0;
@@ -540,6 +576,16 @@
       color: #fff;
       text-shadow: 0 2px 6px rgba(0,0,0,0.8);
       background: rgba(0,0,0,0.35);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    #drop-overlay .drop-sub {
+      display: block;
+      margin-top: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      opacity: 0.85;
     }
   </style>
 </head>
@@ -571,22 +617,20 @@
     </div>
   </div>
 
-  <!-- オブジェクト操作用ツールパネル（4列省スペース構成） -->
   <div id="properties-panel" class="hidden">
-    <!-- 列1: その他のボタン（削除, 影） -->
     <div class="panel-col-misc">
       <button class="btn-icon-delete" id="btn-delete" title="削除">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
       </button>
-      <button id="btn-shadow-toggle" class="toggle-btn active" style="padding: 2px 4px; font-size: 10px;">影</button>
+      <button class="btn-icon-dup" id="btn-duplicate" title="複製">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+      </button>
     </div>
 
-    <!-- 列2: カラー（縦3×横3の9マスグリッド） -->
     <div class="panel-col-colors">
       <div id="color-grid" class="color-grid"></div>
     </div>
 
-    <!-- 列3: 十字キー -->
     <div class="panel-col-nudge">
       <div class="nudge-cross">
         <button class="nudge-btn" id="nudge-up">↑</button>
@@ -596,15 +640,12 @@
       </div>
     </div>
 
-    <!-- 列4: スライダー（縦に並べるレイアウト） -->
     <div class="panel-col-sliders">
-      <!-- フォント選択（テキストのみ） -->
       <div class="panel-row" id="font-prop-row">
         <span class="panel-label">書体</span>
         <select id="font-select" class="font-select"></select>
       </div>
 
-      <!-- テキスト操作用 -->
       <div class="panel-row" id="text-prop-row">
         <span class="panel-label">文字</span>
         <div class="input-wrapper">
@@ -614,25 +655,33 @@
         <button id="btn-bold" class="toggle-btn">太字</button>
       </div>
 
-      <!-- サイズ/線幅 & フチ -->
       <div class="panel-row" id="size-prop-row">
         <span class="panel-label" id="size-label">サイズ</span>
-        <input type="range" id="size-slider" min="1" max="100" value="100">
+        <input type="range" id="size-slider">
         <span class="panel-label" style="min-width:auto; margin-left:2px;">フチ</span>
-        <input type="range" id="outline-slider" min="0" max="20" value="20">
+        <input type="range" id="outline-slider">
       </div>
 
-      <!-- 四角形／隠す用: 角丸 & 正方形固定 -->
+      <div class="panel-row" id="shadow-prop-row">
+        <span class="panel-label">影</span>
+        <input type="range" id="shadow-slider">
+      </div>
+
       <div class="panel-row" id="radius-prop-row">
         <span class="panel-label">角丸</span>
-        <input type="range" id="radius-slider" min="0" max="100" value="100">
+        <input type="range" id="radius-slider" min="0" max="100">
         <button id="btn-aspect-square" class="toggle-btn">正方形</button>
       </div>
 
-      <!-- 矢印用: 先端サイズ -->
       <div class="panel-row" id="arrow-prop-row">
         <span class="panel-label">先端</span>
-        <input type="range" id="arrow-slider" min="5" max="90" value="90">
+        <input type="range" id="arrow-slider">
+        <button id="btn-arrow-ends" class="toggle-btn">端線</button>
+      </div>
+
+      <div class="panel-row" id="image-prop-row">
+        <button id="btn-bg-remove">背景削除</button>
+        <button id="btn-bg-connected" class="toggle-btn active" title="連結部分のみ削除">連結</button>
       </div>
     </div>
   </div>
@@ -666,7 +715,12 @@
     <button class="close-modal-btn" id="btn-close-modal">閉じる</button>
   </div>
 
-  <div id="drop-overlay"><div class="drop-inner">画像をドロップして読み込み</div></div>
+  <div id="drop-overlay">
+    <div class="drop-inner">
+      <span id="drop-overlay-text">画像をドロップして読み込み</span>
+      <span class="drop-sub">透過PNGもそのまま重ねられます</span>
+    </div>
+  </div>
 
   <script>
     // -------------------------------------------------------------
@@ -679,27 +733,24 @@
     ];
 
     const RECENT_COLORS_KEY = 'cocomark_recent_colors';
-    const MAX_RECENT_COLORS = 5; // 3x3 グリッド（プリセット3 + 履歴5 + ピッカー1）
+    const MAX_RECENT_COLORS = 5;
 
-    const MAX_TEXT_SIZE = 160;
-    const MAX_STROKE_WIDTH = 40;
-    const MAX_OUTLINE_WIDTH = 20;
-    const MAX_ARROW_SIZE = 90;
     const MAX_BORDER_RADIUS_PERCENT = 100;
 
-    const HIDE_FILL_MAX = 96;      // 「隠す」塗りつぶしの内部解像度
-    const SOURCE_SAMPLE_MAX = 1600; // サンプリング用ソース画像の最大辺
+    const HIDE_FILL_MAX = 512;
+    const SOURCE_SAMPLE_MAX = 1600;
+
+    const PLACED_IMAGE_MAX_RATIO = 0.4;
 
     const FONT_OPTIONS = [
-      { label: 'システム', value: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif' },
-      { label: 'ゴシック体', value: '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif' },
-      { label: '明朝体', value: '"Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif' },
+      { label: 'ゴシック', value: '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif' },
       { label: '丸ゴシック', value: '"Hiragino Maru Gothic ProN", "Yu Gothic Medium", "Arial Rounded MT Bold", sans-serif' },
-      { label: '等幅', value: '"SF Mono", Menlo, Consolas, "Courier New", monospace' },
-      { label: '手書き風', value: '"Bradley Hand", "Comic Sans MS", "Yomogi", cursive' },
-      { label: '筆記体', value: '"Snell Roundhand", "Zapfino", "Segoe Script", cursive' }
+      { label: '明朝', value: '"Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif' }
     ];
     const DEFAULT_FONT = FONT_OPTIONS[0].value;
+
+    const ROTATION_SNAP_DEG = 45;
+    const ROTATION_SNAP_THRESH = 2;
 
     // -------------------------------------------------------------
     // 状態
@@ -717,16 +768,25 @@
       history: [],
       historyIndex: -1,
       recentColors: [],
+      bgRemoveConnected: true,
+      ranges: {
+        textSize:     { min: 8,  max: 200, step: 1 },
+        strokeWidth:  { min: 1,  max: 40,  step: 1 },
+        outlineWidth: { min: 0,  max: 20,  step: 1 },
+        arrowSize:    { min: 5,  max: 100, step: 1 },
+        shadow:       { min: 0,  max: 40,  step: 1 }
+      },
       defaults: {
         color: '#e63946',
-        strokeWidth: MAX_STROKE_WIDTH,
-        textSize: MAX_TEXT_SIZE,
+        strokeWidth: 8,
+        textSize: 48,
         borderRadius: MAX_BORDER_RADIUS_PERCENT,
         hideRadius: 0,
-        outlineWidth: MAX_OUTLINE_WIDTH,
-        arrowSize: MAX_ARROW_SIZE,
+        outlineWidth: 4,
+        arrowSize: 30,
+        arrowEnds: false,
+        shadow: 8,
         isBold: true,
-        hasShadow: true,
         text: '文字入力',
         fontFamily: DEFAULT_FONT
       }
@@ -750,6 +810,7 @@
     const btnRedo = document.getElementById('btn-redo');
     const btnExport = document.getElementById('btn-export');
     const btnDelete = document.getElementById('btn-delete');
+    const btnDuplicate = document.getElementById('btn-duplicate');
     const colorGridContainer = document.getElementById('color-grid');
     const textContentInput = document.getElementById('text-content-input');
     const btnClearText = document.getElementById('btn-clear-text');
@@ -758,21 +819,26 @@
     const sizeSlider = document.getElementById('size-slider');
     const sizeLabel = document.getElementById('size-label');
     const outlineSlider = document.getElementById('outline-slider');
+    const shadowSlider = document.getElementById('shadow-slider');
     const radiusSlider = document.getElementById('radius-slider');
     const arrowSlider = document.getElementById('arrow-slider');
     const btnAspectSquare = document.getElementById('btn-aspect-square');
-    const btnShadowToggle = document.getElementById('btn-shadow-toggle');
+    const btnArrowEnds = document.getElementById('btn-arrow-ends');
+    const btnBgRemove = document.getElementById('btn-bg-remove');
+    const btnBgConnected = document.getElementById('btn-bg-connected');
     const saveModal = document.getElementById('save-modal');
     const savePreview = document.getElementById('save-preview');
     const btnCloseModal = document.getElementById('btn-close-modal');
     const dropOverlay = document.getElementById('drop-overlay');
+    const dropOverlayText = document.getElementById('drop-overlay-text');
 
     const measureCtx = document.createElement('canvas').getContext('2d');
 
-    // ソース画像のピクセルデータ（「隠す」塗りつぶし用）
     let srcPixels = null;
-    // 「隠す」塗りつぶしキャッシュ（WeakMap なので履歴JSONに混入しない）
     const hideFillCache = new WeakMap();
+
+    const imageRegistry = new Map();
+    let imageKeyCounter = 0;
 
     // -------------------------------------------------------------
     // ユーティリティ
@@ -800,9 +866,97 @@
       ctx.closePath();
     }
 
+    function isBoxType(t) {
+      return t === 'rect' || t === 'hide' || t === 'image';
+    }
+
+    function normalizeAngle(deg) {
+      while (deg > 180) deg -= 360;
+      while (deg < -180) deg += 360;
+      return deg;
+    }
+
+    function snapRotation(deg) {
+      const d = normalizeAngle(deg);
+      const nearest = Math.round(d / ROTATION_SNAP_DEG) * ROTATION_SNAP_DEG;
+      if (Math.abs(d - nearest) <= ROTATION_SNAP_THRESH) return nearest;
+      return d;
+    }
+
+    function getRotatedAABB(a) {
+      const c = getRotCenter(a);
+      const corners = [
+        { x: a.x, y: a.y },
+        { x: a.x + a.w, y: a.y },
+        { x: a.x + a.w, y: a.y + a.h },
+        { x: a.x, y: a.y + a.h }
+      ];
+      const rad = (a.rotation || 0) * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of corners) {
+        const dx = p.x - c.x, dy = p.y - c.y;
+        const wx = c.x + dx * cos - dy * sin;
+        const wy = c.y + dx * sin + dy * cos;
+        if (wx < minX) minX = wx;
+        if (wy < minY) minY = wy;
+        if (wx > maxX) maxX = wx;
+        if (wy > maxY) maxY = wy;
+      }
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
     // -------------------------------------------------------------
-    // 最前面へ移動
+    // 画像サイズに応じたスライダー範囲
     // -------------------------------------------------------------
+    function updateSliderRanges() {
+      const ref = Math.max(state.imgWidth, state.imgHeight);
+      if (!ref) return;
+
+      state.ranges = {
+        textSize: {
+          min: Math.max(8, Math.round(ref * 0.01)),
+          max: Math.max(40, Math.round(ref * 0.25)),
+          step: 1
+        },
+        strokeWidth: {
+          min: 1,
+          max: Math.max(10, Math.round(ref * 0.05)),
+          step: 1
+        },
+        outlineWidth: {
+          min: 0,
+          max: Math.max(5, Math.round(ref * 0.03)),
+          step: 1
+        },
+        arrowSize: {
+          min: Math.max(5, Math.round(ref * 0.01)),
+          max: Math.max(20, Math.round(ref * 0.15)),
+          step: 1
+        },
+        shadow: {
+          min: 0,
+          max: Math.max(10, Math.round(ref * 0.04)),
+          step: 1
+        }
+      };
+
+      const d = state.defaults;
+      d.textSize = clampI(Math.round(ref * 0.08), state.ranges.textSize.min, state.ranges.textSize.max);
+      d.strokeWidth = clampI(Math.round(ref * 0.015), state.ranges.strokeWidth.min, state.ranges.strokeWidth.max);
+      d.outlineWidth = clampI(Math.round(ref * 0.008), state.ranges.outlineWidth.min, state.ranges.outlineWidth.max);
+      d.arrowSize = clampI(Math.round(ref * 0.05), state.ranges.arrowSize.min, state.ranges.arrowSize.max);
+      d.shadow = clampI(Math.round(ref * 0.01), state.ranges.shadow.min, state.ranges.shadow.max);
+    }
+
+    function setSliderRange(slider, range, value) {
+      if (!range) return;
+      slider.min = range.min;
+      slider.max = range.max;
+      slider.step = range.step || 1;
+      slider.value = clampI(value, range.min, range.max);
+    }
+
     function bringToFront(id) {
       if (!id) return;
       const idx = state.annotations.findIndex(a => a.id === id);
@@ -813,7 +967,7 @@
     }
 
     // -------------------------------------------------------------
-    // 最近使った色 & パレット管理
+    // パレット
     // -------------------------------------------------------------
     function loadRecentColors() {
       try {
@@ -850,7 +1004,7 @@
       const list = [
         ...PRESET_COLORS.map(p => p.val),
         ...state.recentColors
-      ].slice(0, 8); // ピッカー用の1枠を確保（最大9個）
+      ].slice(0, 8);
 
       list.forEach(val => {
         const swatch = document.createElement('div');
@@ -872,14 +1026,14 @@
       pickerInput.type = 'color';
 
       const selectedAnno = state.annotations.find(a => a.id === state.selectedId);
-      pickerInput.value = selectedAnno ? selectedAnno.color : state.defaults.color;
+      pickerInput.value = (selectedAnno && selectedAnno.color) ? selectedAnno.color : state.defaults.color;
 
       pickerInput.addEventListener('change', (e) => {
         const c = e.target.value;
         state.defaults.color = c;
         pushRecentColor(c);
         const currAnno = state.annotations.find(a => a.id === state.selectedId);
-        if (currAnno) {
+        if (currAnno && currAnno.type !== 'image') {
           currAnno.color = c;
           saveHistory();
           renderAnnotations();
@@ -952,9 +1106,11 @@
           annoCanvas.width = img.width;
           annoCanvas.height = img.height;
 
+          bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
           bgCtx.drawImage(img, 0, 0);
 
           cacheSourcePixels();
+          updateSliderRanges();
 
           startScreen.style.display = 'none';
           state.annotations = [];
@@ -981,7 +1137,70 @@
       e.target.value = '';
     });
 
-    // ドラッグ&ドロップ対応
+    function placeImageFromFile(file, dropCoords) {
+      if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          addImageAnnotation(img, dropCoords);
+        };
+        img.onerror = () => {};
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function addImageAnnotation(img, dropCoords) {
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      if (!iw || !ih) return;
+      if (!state.imgWidth || !state.imgHeight) return;
+
+      const maxSide = Math.max(state.imgWidth, state.imgHeight) * PLACED_IMAGE_MAX_RATIO;
+      let sc = Math.min(1, maxSide / Math.max(iw, ih));
+      if (!isFinite(sc) || sc <= 0) sc = 1;
+
+      const w = Math.max(24, iw * sc);
+      const h = Math.max(24, ih * sc);
+
+      let cx = state.imgWidth / 2;
+      let cy = state.imgHeight / 2;
+      if (dropCoords && isFinite(dropCoords.x) && isFinite(dropCoords.y)) {
+        cx = clampI(dropCoords.x, 0, state.imgWidth);
+        cy = clampI(dropCoords.y, 0, state.imgHeight);
+      }
+
+      const key = 'img_' + (++imageKeyCounter);
+      imageRegistry.set(key, img);
+
+      const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+      const anno = {
+        id,
+        type: 'image',
+        srcKey: key,
+        x: cx - w / 2,
+        y: cy - h / 2,
+        w: w,
+        h: h,
+        aspect: w / h,
+        rotation: 0,
+        shadow: state.defaults.shadow
+      };
+
+      state.annotations.push(anno);
+      bringToFront(id);
+      state.selectedId = id;
+      switchTool('select');
+      updateUI();
+      renderAnnotations();
+      saveHistory();
+    }
+
+    // -------------------------------------------------------------
+    // ドラッグ&ドロップ
+    // -------------------------------------------------------------
     let dragDepth = 0;
 
     function setupDragAndDrop() {
@@ -989,6 +1208,9 @@
         if (!e.dataTransfer) return;
         e.preventDefault();
         dragDepth++;
+        dropOverlayText.textContent = state.image
+          ? '画像をドロップして配置'
+          : '画像をドロップして読み込み';
         dropOverlay.classList.add('active');
       });
 
@@ -1011,28 +1233,37 @@
         const dt = e.dataTransfer;
         if (!dt) return;
 
-        let file = null;
+        const files = [];
         if (dt.files && dt.files.length > 0) {
           for (let i = 0; i < dt.files.length; i++) {
-            if (dt.files[i].type && dt.files[i].type.indexOf('image/') === 0) {
-              file = dt.files[i];
-              break;
-            }
+            const f = dt.files[i];
+            if (f && f.type && f.type.indexOf('image/') === 0) files.push(f);
           }
         }
-        if (!file && dt.items) {
+        if (files.length === 0 && dt.items) {
           for (let i = 0; i < dt.items.length; i++) {
             const it = dt.items[i];
             if (it.kind === 'file') {
               const f = it.getAsFile();
-              if (f && f.type && f.type.indexOf('image/') === 0) {
-                file = f;
-                break;
-              }
+              if (f && f.type && f.type.indexOf('image/') === 0) files.push(f);
             }
           }
         }
-        if (file) loadImageFile(file);
+        if (files.length === 0) return;
+
+        if (!state.image) {
+          loadImageFile(files[0]);
+          return;
+        }
+
+        const coords = getCanvasCoords(e);
+        const step = 30 / (state.scale || 1);
+        files.forEach((f, idx) => {
+          placeImageFromFile(f, {
+            x: coords.x + idx * step,
+            y: coords.y + idx * step
+          });
+        });
       });
     }
 
@@ -1059,11 +1290,10 @@
       viewport.style.height = state.imgHeight + 'px';
       viewport.style.transform =
         `translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.scale})`;
-      positionPanel();
     }
 
     // -------------------------------------------------------------
-    // 「隠す」用: ソースピクセルのキャッシュと塗りつぶし生成
+    // 元画像キャッシュ
     // -------------------------------------------------------------
     function cacheSourcePixels() {
       srcPixels = null;
@@ -1097,68 +1327,143 @@
       }
     }
 
-    /**
-     * 矩形の外側4辺の色を内側へ引き伸ばしてブレンドする塗りつぶし画像を作る。
-     * グラデーション背景なら上下／左右の色が自然に繋がり、
-     * 写真などの複雑な背景でも滑らかに覆い隠せる。
-     */
-    function buildHideFillCanvas(x0, y0, w, h) {
-      const sc = Math.min(1, HIDE_FILL_MAX / Math.max(w, h));
-      const sw = Math.max(2, Math.round(w * sc));
-      const sh = Math.max(2, Math.round(h * sc));
+    // -------------------------------------------------------------
+    // 「隠す」塗り画像の生成
+    //   - 枠ローカル座標（回転を打ち消した座標系）で考える
+    //   - 上下左右4辺すべてから色を取得し、位置に応じた重みで
+    //     合成することでシームレスな塗りを実現（4分割を解消）
+    //   - バイリニア補間で滑らかにサンプリング
+    // -------------------------------------------------------------
+    function buildHideFillCanvas(a) {
+      const aabb = getRotatedAABB(a);
+      const aw = aabb.w;
+      const ah = aabb.h;
+      if (aw < 1 || ah < 1) return null;
+
+      const sc = Math.min(1, HIDE_FILL_MAX / Math.max(aw, ah));
+      const sw = Math.max(2, Math.round(aw * sc));
+      const sh = Math.max(2, Math.round(ah * sc));
 
       const cnv = document.createElement('canvas');
       cnv.width = sw;
       cnv.height = sh;
       const ctx = cnv.getContext('2d');
 
-      if (!srcPixels) {
-        // 画像データが取れない場合は透明のまま（何も覆わない）
-        return cnv;
-      }
+      if (!srcPixels) return cnv;
 
       const out = ctx.createImageData(sw, sh);
       const od = out.data;
 
       const data = srcPixels.data;
-      const iw = srcPixels.width;
-      const ih = srcPixels.height;
+      const srcW = srcPixels.width;
+      const srcH = srcPixels.height;
       const kx = srcPixels.sx;
       const ky = srcPixels.sy;
 
-      // サンプリング位置（矩形のすぐ外側）
-      const xL = (x0 - 1) * kx;
-      const xR = (x0 + w + 1) * kx;
-      const yT = (y0 - 1) * ky;
-      const yB = (y0 + h + 1) * ky;
+      const rectW = Math.abs(a.w);
+      const rectH = Math.abs(a.h);
+      const cx = a.x + a.w / 2;
+      const cy = a.y + a.h / 2;
+      const hw = rectW / 2;
+      const hh = rectH / 2;
 
-      const rowTop = clampI(Math.round(yT), 0, ih - 1) * iw;
-      const rowBot = clampI(Math.round(yB), 0, ih - 1) * iw;
-      const colLeft = clampI(Math.round(xL), 0, iw - 1);
-      const colRight = clampI(Math.round(xR), 0, iw - 1);
+      const theta = (a.rotation || 0) * Math.PI / 180;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+
+      const sampleDist = Math.max(2, Math.min(12, Math.max(rectW, rectH) * 0.02));
+
+      // ソース画像からのバイリニアサンプリング
+      const sampleWorld = (wx, wy) => {
+        let fx = wx * kx;
+        let fy = wy * ky;
+        if (fx < 0) fx = 0; else if (fx > srcW - 1) fx = srcW - 1;
+        if (fy < 0) fy = 0; else if (fy > srcH - 1) fy = srcH - 1;
+
+        const x0 = fx | 0;
+        const y0 = fy | 0;
+        const x1 = x0 < srcW - 1 ? x0 + 1 : x0;
+        const y1 = y0 < srcH - 1 ? y0 + 1 : y0;
+
+        const tx = fx - x0;
+        const ty = fy - y0;
+        const w00 = (1 - tx) * (1 - ty);
+        const w10 = tx * (1 - ty);
+        const w01 = (1 - tx) * ty;
+        const w11 = tx * ty;
+
+        const i00 = (y0 * srcW + x0) << 2;
+        const i10 = (y0 * srcW + x1) << 2;
+        const i01 = (y1 * srcW + x0) << 2;
+        const i11 = (y1 * srcW + x1) << 2;
+
+        return [
+          data[i00]     * w00 + data[i10]     * w10 + data[i01]     * w01 + data[i11]     * w11,
+          data[i00 + 1] * w00 + data[i10 + 1] * w10 + data[i01 + 1] * w01 + data[i11 + 1] * w11,
+          data[i00 + 2] * w00 + data[i10 + 2] * w10 + data[i01 + 2] * w01 + data[i11 + 2] * w11
+        ];
+      };
+
+      const toWorldX = (lx, ly) => cx + lx * cosT - ly * sinT;
+      const toWorldY = (lx, ly) => cy + lx * sinT + ly * cosT;
+
+      const invW = aw / sw;
+      const invH = ah / sh;
 
       for (let j = 0; j < sh; j++) {
-        const py = (j + 0.5) / sh;
-        const wb = py;
-        const wt = 1 - py;
-        const rowS = clampI(Math.round((y0 + py * h) * ky), 0, ih - 1) * iw;
-        const base = j * sw;
-
+        const wy = aabb.y + (j + 0.5) * invH;
         for (let i = 0; i < sw; i++) {
-          const px = (i + 0.5) / sw;
-          const wr = px;
-          const wl = 1 - px;
-          const ixS = clampI(Math.round((x0 + px * w) * kx), 0, iw - 1);
+          const wx = aabb.x + (i + 0.5) * invW;
 
-          const tI = (rowTop + ixS) << 2;
-          const bI = (rowBot + ixS) << 2;
-          const lI = (rowS + colLeft) << 2;
-          const rI = (rowS + colRight) << 2;
+          // ワールド → 枠ローカル（中心原点、回転打ち消し）
+          const dx = wx - cx;
+          const dy = wy - cy;
+          const lx = dx * cosT + dy * sinT;
+          const ly = -dx * sinT + dy * cosT;
 
-          const o = (base + i) << 2;
-          od[o]     = (data[tI]     * wt + data[bI]     * wb + data[lI]     * wl + data[rI]     * wr) * 0.5;
-          od[o + 1] = (data[tI + 1] * wt + data[bI + 1] * wb + data[lI + 1] * wl + data[rI + 1] * wr) * 0.5;
-          od[o + 2] = (data[tI + 2] * wt + data[bI + 2] * wb + data[lI + 2] * wl + data[rI + 2] * wr) * 0.5;
+          // 正規化位置（0..1）
+          const u = (lx + hw) / rectW;
+          const v = (ly + hh) / rectH;
+
+          // 4辺それぞれのサンプリング位置（直線辺の範囲にクランプ）
+          const topLX = lx < -hw ? -hw : (lx > hw ? hw : lx);
+          const leftLY = ly < -hh ? -hh : (ly > hh ? hh : ly);
+
+          // 上
+          const tWX = toWorldX(topLX, -hh - sampleDist);
+          const tWY = toWorldY(topLX, -hh - sampleDist);
+          const cTop = sampleWorld(tWX, tWY);
+
+          // 下
+          const bWX = toWorldX(topLX, hh + sampleDist);
+          const bWY = toWorldY(topLX, hh + sampleDist);
+          const cBot = sampleWorld(bWX, bWY);
+
+          // 左
+          const lWX = toWorldX(-hw - sampleDist, leftLY);
+          const lWY = toWorldY(-hw - sampleDist, leftLY);
+          const cLeft = sampleWorld(lWX, lWY);
+
+          // 右
+          const rWX = toWorldX(hw + sampleDist, leftLY);
+          const rWY = toWorldY(hw + sampleDist, leftLY);
+          const cRight = sampleWorld(rWX, rWY);
+
+          // 位置に応じた重み（合計は常に 2）
+          const wt = 1 - v;
+          const wb = v;
+          const wl = 1 - u;
+          const wr = u;
+
+          // 4辺の色を滑らかに合成（0.5 = 1/重み合計）
+          const r = (cTop[0] * wt + cBot[0] * wb + cLeft[0] * wl + cRight[0] * wr) * 0.5;
+          const g = (cTop[1] * wt + cBot[1] * wb + cLeft[1] * wl + cRight[1] * wr) * 0.5;
+          const b = (cTop[2] * wt + cBot[2] * wb + cLeft[2] * wl + cRight[2] * wr) * 0.5;
+
+          const o = (j * sw + i) << 2;
+          od[o]     = r;
+          od[o + 1] = g;
+          od[o + 2] = b;
           od[o + 3] = 255;
         }
       }
@@ -1168,22 +1473,26 @@
     }
 
     function getHideFill(a) {
-      const x0 = Math.min(a.x, a.x + a.w);
-      const y0 = Math.min(a.y, a.y + a.h);
-      const w = Math.max(1, Math.abs(a.w));
-      const h = Math.max(1, Math.abs(a.h));
+      const key = [
+        Math.round(a.x),
+        Math.round(a.y),
+        Math.round(a.w),
+        Math.round(a.h),
+        Math.round((a.rotation || 0) * 10),
+        Math.round((a.borderRadius || 0) * 10)
+      ].join('_');
 
-      const key = `${Math.round(x0)}_${Math.round(y0)}_${Math.round(w)}_${Math.round(h)}`;
       const cached = hideFillCache.get(a);
       if (cached && cached.key === key) return cached.canvas;
 
-      const canvas = buildHideFillCanvas(x0, y0, w, h);
+      const canvas = buildHideFillCanvas(a);
+      if (!canvas) return null;
       hideFillCache.set(a, { key, canvas });
       return canvas;
     }
 
     // -------------------------------------------------------------
-    // 座標計算
+    // 座標
     // -------------------------------------------------------------
     function getCanvasCoords(e) {
       const rect = annoCanvas.getBoundingClientRect();
@@ -1205,7 +1514,7 @@
     }
 
     function getRotCenter(a) {
-      if (a.type === 'rect' || a.type === 'hide') {
+      if (isBoxType(a.type)) {
         return { x: a.x + a.w / 2, y: a.y + a.h / 2 };
       }
       if (a.type === 'text') {
@@ -1238,7 +1547,7 @@
     }
 
     // -------------------------------------------------------------
-    // 履歴管理
+    // 履歴
     // -------------------------------------------------------------
     function saveHistory() {
       state.history = state.history.slice(0, state.historyIndex + 1);
@@ -1278,7 +1587,7 @@
     btnRedo.addEventListener('click', redo);
 
     // -------------------------------------------------------------
-    // タッチ＆ポインターイベント処理
+    // ポインター
     // -------------------------------------------------------------
     let activePointers = new Map();
     let isDrawing = false;
@@ -1359,7 +1668,6 @@
       const coords = getCanvasCoords(e);
       startImageCoords = coords;
 
-      // 変形ハンドルのタップ判定
       if (state.selectedId) {
         const selectedAnno = state.annotations.find(a => a.id === state.selectedId);
         if (selectedAnno) {
@@ -1384,7 +1692,6 @@
         }
       }
 
-      // 新規作成
       if (state.activeTool !== 'select') {
         const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
 
@@ -1396,7 +1703,7 @@
             color: state.defaults.color,
             size: state.defaults.textSize,
             isBold: state.defaults.isBold,
-            hasShadow: state.defaults.hasShadow,
+            shadow: state.defaults.shadow,
             outlineWidth: state.defaults.outlineWidth,
             fontFamily: state.defaults.fontFamily,
             rotation: 0
@@ -1407,6 +1714,7 @@
           saveHistory();
           switchTool('select');
           renderAnnotations();
+          updateUI();
           return;
         }
 
@@ -1420,7 +1728,7 @@
             strokeWidth: state.defaults.strokeWidth,
             outlineWidth: state.defaults.outlineWidth,
             borderRadius: state.defaults.borderRadius,
-            hasShadow: state.defaults.hasShadow,
+            shadow: state.defaults.shadow,
             rotation: 0
           };
           state.annotations.push(currentAnnotation);
@@ -1456,7 +1764,8 @@
             strokeWidth: state.defaults.strokeWidth,
             outlineWidth: state.defaults.outlineWidth,
             arrowSize: state.defaults.arrowSize,
-            hasShadow: state.defaults.hasShadow
+            arrowEnds: state.defaults.arrowEnds,
+            shadow: state.defaults.shadow
           };
           state.annotations.push(currentAnnotation);
           pendingSelectId = id;
@@ -1466,7 +1775,6 @@
         }
       }
 
-      // 選択・移動モード
       const hitAnno = getHitAnnotation(coords);
       if (hitAnno) {
         pendingSelectId = hitAnno.id;
@@ -1541,14 +1849,14 @@
         const dx = coords.x - startImageCoords.x;
         const dy = coords.y - startImageCoords.y;
 
-        if (selectedAnno.type === 'rect' || selectedAnno.type === 'hide') {
+        if (isBoxType(selectedAnno.type)) {
           if (transformHandle === 'rot') {
             const cur = Math.atan2(
               coords.y - initialRotCenter.y,
               coords.x - initialRotCenter.x
             );
-            selectedAnno.rotation =
-              initialRotation + (cur - initialHandleAngle) * (180 / Math.PI);
+            const raw = initialRotation + (cur - initialHandleAngle) * (180 / Math.PI);
+            selectedAnno.rotation = snapRotation(raw);
           } else {
             applyRectResize(selectedAnno, initialObjState, transformHandle, dx, dy);
           }
@@ -1566,8 +1874,8 @@
               coords.y - initialRotCenter.y,
               coords.x - initialRotCenter.x
             );
-            selectedAnno.rotation =
-              initialRotation + (cur - initialHandleAngle) * (180 / Math.PI);
+            const raw = initialRotation + (cur - initialHandleAngle) * (180 / Math.PI);
+            selectedAnno.rotation = snapRotation(raw);
           }
         }
         renderAnnotations();
@@ -1578,7 +1886,7 @@
         const dx = coords.x - startImageCoords.x;
         const dy = coords.y - startImageCoords.y;
 
-        if (selectedAnno.type === 'rect' || selectedAnno.type === 'hide' || selectedAnno.type === 'text') {
+        if (isBoxType(selectedAnno.type) || selectedAnno.type === 'text') {
           selectedAnno.x = initialObjState.x + dx;
           selectedAnno.y = initialObjState.y + dy;
         } else if (selectedAnno.type === 'arrow') {
@@ -1607,6 +1915,13 @@
       nw = Math.max(10, nw);
       nh = Math.max(10, nh);
 
+      if (s.type === 'image' && s.aspect) {
+        const wFromH = nh * s.aspect;
+        nw = (Math.abs(nw - s.w) >= Math.abs(wFromH - s.w)) ? nw : wFromH;
+        nw = Math.max(20, nw);
+        nh = nw / s.aspect;
+      }
+
       let anchorLocalX, anchorLocalY;
       if (handle === 'se') { anchorLocalX = s.x; anchorLocalY = s.y; }
       else if (handle === 'nw') { anchorLocalX = s.x + s.w; anchorLocalY = s.y + s.h; }
@@ -1627,6 +1942,7 @@
 
       target.w = nw;
       target.h = nh;
+      if (s.type === 'image') target.aspect = nw / nh;
       target.x = (A.x - rx) - nw / 2;
       target.y = (A.y - ry) - nh / 2;
     }
@@ -1727,7 +2043,7 @@
       for (let i = state.annotations.length - 1; i >= 0; i--) {
         const a = state.annotations[i];
 
-        if (a.type === 'rect' || a.type === 'hide') {
+        if (isBoxType(a.type)) {
           const c = getRotCenter(a);
           const rad = -(a.rotation || 0) * Math.PI / 180;
           const dx = coords.x - c.x;
@@ -1739,7 +2055,9 @@
           const maxX = Math.max(a.x, a.x + a.w);
           const minY = Math.min(a.y, a.y + a.h);
           const maxY = Math.max(a.y, a.y + a.h);
-          const margin = 12 / state.scale + 8;
+
+          const margin = 15 / state.scale;
+
           if (lx >= minX - margin && lx <= maxX + margin &&
               ly >= minY - margin && ly <= maxY + margin) {
             return a;
@@ -1749,8 +2067,8 @@
           if (dist < (a.strokeWidth / 2 + 24 / state.scale)) return a;
         } else if (a.type === 'text') {
           const m = measureTextAnno(a);
-          const w = m.w;
-          const h = a.size;
+          const w = Math.max(m.w, a.size * 0.6);
+          const h = Math.max(a.size, 12);
 
           const c = getRotCenter(a);
           const rad = -(a.rotation || 0) * Math.PI / 180;
@@ -1759,8 +2077,9 @@
           const lx = c.x + dx * Math.cos(rad) - dy * Math.sin(rad);
           const ly = c.y + dx * Math.sin(rad) + dy * Math.cos(rad);
 
-          if (lx >= a.x - w/2 - 12 && lx <= a.x + w/2 + 12 &&
-              ly >= a.y - h/2 - 12 && ly <= a.y + h/2 + 12) {
+          const margin = 15 / state.scale;
+          if (lx >= a.x - w/2 - margin && lx <= a.x + w/2 + margin &&
+              ly >= a.y - h/2 - margin && ly <= a.y + h/2 + margin) {
             return a;
           }
         }
@@ -1772,7 +2091,7 @@
       const handles = [];
       const off = 34 / state.scale;
 
-      if (a.type === 'rect' || a.type === 'hide') {
+      if (isBoxType(a.type)) {
         const corners = [
           { id: 'nw', x: a.x, y: a.y },
           { id: 'ne', x: a.x + a.w, y: a.y },
@@ -1816,44 +2135,46 @@
     }
 
     // -------------------------------------------------------------
-    // 描画処理
+    // 描画
     // -------------------------------------------------------------
+    function applyShadow(ctx, a) {
+      if (a.shadow && a.shadow > 0) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+        ctx.shadowBlur = a.shadow;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+    }
+
     function renderAnnotations() {
       annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
 
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
           annoCtx.save();
-          if (a.hasShadow) {
-            annoCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-            annoCtx.shadowBlur = 8;
-            annoCtx.shadowOffsetX = 3;
-            annoCtx.shadowOffsetY = 3;
-          }
+          applyShadow(annoCtx, a);
           drawRoundedRect(annoCtx, a);
           annoCtx.restore();
         } else if (a.type === 'hide') {
           drawHide(annoCtx, a);
         } else if (a.type === 'arrow') {
           annoCtx.save();
-          if (a.hasShadow) {
-            annoCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-            annoCtx.shadowBlur = 8;
-            annoCtx.shadowOffsetX = 3;
-            annoCtx.shadowOffsetY = 3;
-          }
+          applyShadow(annoCtx, a);
           drawArrow(annoCtx, a);
           annoCtx.restore();
         } else if (a.type === 'text') {
           drawText(annoCtx, a);
+        } else if (a.type === 'image') {
+          annoCtx.save();
+          applyShadow(annoCtx, a);
+          drawImageAnno(annoCtx, a);
+          annoCtx.restore();
         }
 
         if (a.id === state.selectedId) {
           drawSelectionBounds(a);
         }
       });
-
-      positionPanel();
     }
 
     function drawRoundedRect(ctx, a) {
@@ -1883,7 +2204,7 @@
       });
     }
 
-    // 「隠す」: 背景と馴染む塗りで覆う
+    // 「隠す」: 生成済みの塗り画像を、回転クリップを通してAABBへ描画
     function drawHide(ctx, a) {
       const x0 = Math.min(a.x, a.x + a.w);
       const y0 = Math.min(a.y, a.y + a.h);
@@ -1894,36 +2215,80 @@
       const fill = getHideFill(a);
       if (!fill || !fill.width) return;
 
-      withRotation(ctx, a, () => {
-        const maxR = Math.min(w, h) / 2;
-        const pct = (a.borderRadius != null ? a.borderRadius : 0) / 100;
-        const r = Math.max(0, Math.min(maxR, maxR * pct));
+      const aabb = getRotatedAABB(a);
+      const maxR = Math.min(w, h) / 2;
+      const pct = (a.borderRadius != null ? a.borderRadius : 0) / 100;
+      const r = Math.max(0, Math.min(maxR, maxR * pct));
+      const rad = (a.rotation || 0) * Math.PI / 180;
+      const c = getRotCenter(a);
 
-        ctx.save();
-        pathRoundedRect(ctx, x0, y0, w, h, r);
-        ctx.clip();
-        ctx.drawImage(fill, 0, 0, fill.width, fill.height, x0, y0, w, h);
-        ctx.restore();
+      ctx.save();
+      if (a.rotation) {
+        ctx.translate(c.x, c.y);
+        ctx.rotate(rad);
+        ctx.translate(-c.x, -c.y);
+      }
+      pathRoundedRect(ctx, x0, y0, w, h, r);
+      ctx.clip();
+
+      ctx.save();
+      if (a.rotation) {
+        ctx.translate(c.x, c.y);
+        ctx.rotate(-rad);
+        ctx.translate(-c.x, -c.y);
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(fill, 0, 0, fill.width, fill.height, aabb.x, aabb.y, aabb.w, aabb.h);
+      ctx.restore();
+
+      ctx.restore();
+    }
+
+    function drawImageAnno(ctx, a) {
+      const img = imageRegistry.get(a.srcKey);
+      if (!img) return;
+
+      withRotation(ctx, a, () => {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, a.x, a.y, a.w, a.h);
       });
     }
 
     function drawArrow(ctx, a) {
       const angle = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
       const headLen = a.arrowSize || 20;
+      const useEnds = a.arrowEnds === true;
 
       const drawPath = () => {
         ctx.beginPath();
-        ctx.moveTo(a.x1, a.y1);
-        ctx.lineTo(a.x2, a.y2);
-        ctx.lineTo(
-          a.x2 - headLen * Math.cos(angle - Math.PI / 6),
-          a.y2 - headLen * Math.sin(angle - Math.PI / 6)
-        );
-        ctx.moveTo(a.x2, a.y2);
-        ctx.lineTo(
-          a.x2 - headLen * Math.cos(angle + Math.PI / 6),
-          a.y2 - headLen * Math.sin(angle + Math.PI / 6)
-        );
+        if (useEnds) {
+          ctx.moveTo(a.x1, a.y1);
+          ctx.lineTo(a.x2, a.y2);
+
+          const perp = angle + Math.PI / 2;
+          const hx = Math.cos(perp) * headLen / 2;
+          const hy = Math.sin(perp) * headLen / 2;
+
+          ctx.moveTo(a.x1 - hx, a.y1 - hy);
+          ctx.lineTo(a.x1 + hx, a.y1 + hy);
+
+          ctx.moveTo(a.x2 - hx, a.y2 - hy);
+          ctx.lineTo(a.x2 + hx, a.y2 + hy);
+        } else {
+          ctx.moveTo(a.x1, a.y1);
+          ctx.lineTo(a.x2, a.y2);
+          ctx.lineTo(
+            a.x2 - headLen * Math.cos(angle - Math.PI / 6),
+            a.y2 - headLen * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.moveTo(a.x2, a.y2);
+          ctx.lineTo(
+            a.x2 - headLen * Math.cos(angle + Math.PI / 6),
+            a.y2 - headLen * Math.sin(angle + Math.PI / 6)
+          );
+        }
       };
 
       ctx.lineCap = 'round';
@@ -1950,29 +2315,23 @@
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
 
-        const outline = (a.outlineWidth != null) ? a.outlineWidth : 2;
-        const hasShadow = a.hasShadow !== false;
+        const outline = (a.outlineWidth != null) ? a.outlineWidth : 0;
+        const shadow = (a.shadow != null) ? a.shadow : 0;
 
-        // 1. 影（フチの太さに影響されないよう控えめに）
-        if (hasShadow) {
+        if (shadow > 0) {
           ctx.save();
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-          ctx.shadowBlur = 6;
-          ctx.shadowOffsetX = 3;
-          ctx.shadowOffsetY = 3;
+          applyShadow(ctx, a);
 
           if (outline > 0) {
-            ctx.strokeStyle = 'rgba(0, 0, 0, 1)';
-            ctx.lineWidth = Math.min(outline * 2, 6);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = outline * 2;
             ctx.strokeText(a.text, a.x, a.y);
-          } else {
-            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
-            ctx.fillText(a.text, a.x, a.y);
           }
+          ctx.fillStyle = a.color;
+          ctx.fillText(a.text, a.x, a.y);
           ctx.restore();
         }
 
-        // 2. 本体（白フチ＋塗り）
         if (outline > 0) {
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = outline * 2;
@@ -1992,7 +2351,7 @@
 
       const handleR = 7 / state.scale;
 
-      if (a.type === 'rect' || a.type === 'hide') {
+      if (isBoxType(a.type)) {
         withRotation(annoCtx, a, () => {
           annoCtx.strokeRect(a.x, a.y, a.w, a.h);
         });
@@ -2007,7 +2366,7 @@
       handles.forEach(h => {
         if (h.id === 'rot') {
           let base;
-          if (a.type === 'rect' || a.type === 'hide') {
+          if (isBoxType(a.type)) {
             base = localToWorld(a, a.x + a.w / 2, a.y);
           } else {
             base = localToWorld(a, a.x, a.y - a.size / 2);
@@ -2048,29 +2407,6 @@
     }
 
     // -------------------------------------------------------------
-    // パネル位置調整
-    // -------------------------------------------------------------
-    function positionPanel() {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-
-      let objCenterY;
-      if (a.type === 'rect' || a.type === 'hide') objCenterY = a.y + a.h / 2;
-      else if (a.type === 'text') objCenterY = a.y;
-      else if (a.type === 'arrow') objCenterY = (a.y1 + a.y2) / 2;
-      else objCenterY = 0;
-
-      const screenY = state.panY + objCenterY * state.scale;
-      const containerH = editorContainer.clientHeight;
-
-      if (screenY > containerH * 0.5) {
-        propertiesPanel.classList.add('at-top');
-      } else {
-        propertiesPanel.classList.remove('at-top');
-      }
-    }
-
-    // -------------------------------------------------------------
     // UI 同期
     // -------------------------------------------------------------
     function updateUI() {
@@ -2083,10 +2419,9 @@
 
       propertiesPanel.classList.remove('hidden');
 
-      // 「隠す」のときはカラー列を隠してレイアウトを詰める
-      const isHide = (a.type === 'hide');
-      colorColumn.style.display = isHide ? 'none' : 'flex';
-      propertiesPanel.style.gridTemplateColumns = isHide
+      const hideColorCol = (a.type === 'hide' || a.type === 'image');
+      colorColumn.style.display = hideColorCol ? 'none' : 'flex';
+      propertiesPanel.style.gridTemplateColumns = hideColorCol
         ? 'auto auto 1fr'
         : 'auto auto auto 1fr';
 
@@ -2105,37 +2440,39 @@
       document.getElementById('radius-prop-row').style.display =
         (a.type === 'rect' || a.type === 'hide') ? 'flex' : 'none';
       document.getElementById('arrow-prop-row').style.display = (a.type === 'arrow') ? 'flex' : 'none';
-      document.getElementById('size-prop-row').style.display = (a.type === 'hide') ? 'none' : 'flex';
+      document.getElementById('size-prop-row').style.display =
+        (a.type === 'hide' || a.type === 'image') ? 'none' : 'flex';
+      document.getElementById('shadow-prop-row').style.display =
+        (a.type === 'hide') ? 'none' : 'flex';
+      document.getElementById('image-prop-row').style.display =
+        (a.type === 'image') ? 'flex' : 'none';
 
       if (a.type === 'text') {
         textContentInput.value = a.text;
         btnBold.classList.toggle('active', !!a.isBold);
         sizeLabel.textContent = 'サイズ';
-        sizeSlider.min = 12;
-        sizeSlider.max = MAX_TEXT_SIZE;
-        sizeSlider.value = a.size;
+        setSliderRange(sizeSlider, state.ranges.textSize, a.size);
         fontSelect.value = a.fontFamily || state.defaults.fontFamily;
-      } else if (a.type !== 'hide') {
+      } else if (a.type === 'rect' || a.type === 'arrow') {
         sizeLabel.textContent = '線幅';
-        sizeSlider.min = 1;
-        sizeSlider.max = MAX_STROKE_WIDTH;
-        sizeSlider.value = a.strokeWidth;
+        setSliderRange(sizeSlider, state.ranges.strokeWidth, a.strokeWidth);
       }
+
+      setSliderRange(outlineSlider, state.ranges.outlineWidth, a.outlineWidth != null ? a.outlineWidth : 0);
+      setSliderRange(shadowSlider, state.ranges.shadow, a.shadow != null ? a.shadow : 0);
 
       if (a.type === 'rect' || a.type === 'hide') {
         radiusSlider.value = (a.borderRadius != null) ? a.borderRadius : 0;
       }
+
       if (a.type === 'arrow') {
-        arrowSlider.value = a.arrowSize || 20;
+        setSliderRange(arrowSlider, state.ranges.arrowSize, a.arrowSize || state.ranges.arrowSize.min);
+        btnArrowEnds.classList.toggle('active', !!a.arrowEnds);
       }
 
-      outlineSlider.max = MAX_OUTLINE_WIDTH;
-      outlineSlider.value = (a.outlineWidth != null) ? a.outlineWidth : 2;
-
-      btnShadowToggle.classList.toggle('active', !!a.hasShadow);
-      btnShadowToggle.style.display = isHide ? 'none' : 'flex';
-
-      positionPanel();
+      if (a.type === 'image') {
+        btnBgConnected.classList.toggle('active', state.bgRemoveConnected);
+      }
     }
 
     function switchTool(tool) {
@@ -2148,7 +2485,7 @@
     function selectColor(color) {
       state.defaults.color = color;
       const selectedAnno = state.annotations.find(a => a.id === state.selectedId);
-      if (selectedAnno) {
+      if (selectedAnno && selectedAnno.type !== 'image') {
         selectedAnno.color = color;
         saveHistory();
         renderAnnotations();
@@ -2157,7 +2494,229 @@
     }
 
     // -------------------------------------------------------------
-    // プロパティ操作イベント
+    // 背景削除
+    // -------------------------------------------------------------
+    function removeImageBackground(anno, connectedOnly) {
+      const img = imageRegistry.get(anno.srcKey);
+      if (!img) return false;
+
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      if (!iw || !ih) return false;
+
+      const cnv = document.createElement('canvas');
+      cnv.width = iw;
+      cnv.height = ih;
+      const ctx = cnv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+
+      let imageData;
+      try {
+        imageData = ctx.getImageData(0, 0, iw, ih);
+      } catch (e) {
+        return false;
+      }
+
+      const data = imageData.data;
+
+      const samplePatch = (cx, cy) => {
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const x = clampI(cx + dx, 0, iw - 1);
+            const y = clampI(cy + dy, 0, ih - 1);
+            const idx = (y * iw + x) * 4;
+            if (data[idx + 3] < 128) continue;
+            r += data[idx];
+            g += data[idx + 1];
+            b += data[idx + 2];
+            n++;
+          }
+        }
+        if (n === 0) return null;
+        return [r / n, g / n, b / n];
+      };
+
+      const patches = [
+        samplePatch(2, 2),
+        samplePatch(iw - 3, 2),
+        samplePatch(2, ih - 3),
+        samplePatch(iw - 3, ih - 3)
+      ].filter(Boolean);
+
+      if (patches.length === 0) return false;
+
+      let bgR = 0, bgG = 0, bgB = 0;
+      for (const p of patches) { bgR += p[0]; bgG += p[1]; bgB += p[2]; }
+      bgR /= patches.length;
+      bgG /= patches.length;
+      bgB /= patches.length;
+
+      const isLightBg = ((bgR + bgG + bgB) / 3) > 200;
+      const lowThreshold = isLightBg ? 15 : 25;
+      const highThreshold = isLightBg ? 60 : 90;
+      const connectThreshold = lowThreshold + (highThreshold - lowThreshold) * 0.4;
+
+      const computeAlpha = (dist) => {
+        if (dist <= lowThreshold) return 0;
+        if (dist >= highThreshold) return 255;
+        const t = (dist - lowThreshold) / (highThreshold - lowThreshold);
+        const s = t * t * (3 - 2 * t);
+        return Math.round(255 * s);
+      };
+
+      if (connectedOnly) {
+        const visited = new Uint8Array(iw * ih);
+        const queue = [];
+
+        const isConnectable = (idx) => {
+          const dr = data[idx] - bgR;
+          const dg = data[idx + 1] - bgG;
+          const db = data[idx + 2] - bgB;
+          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+          return dist <= connectThreshold;
+        };
+
+        for (let x = 0; x < iw; x++) {
+          for (const y of [0, ih - 1]) {
+            const p = y * iw + x;
+            if (!visited[p] && data[p * 4 + 3] > 0 && isConnectable(p * 4)) {
+              visited[p] = 1;
+              queue.push(p);
+            }
+          }
+        }
+        for (let y = 1; y < ih - 1; y++) {
+          for (const x of [0, iw - 1]) {
+            const p = y * iw + x;
+            if (!visited[p] && data[p * 4 + 3] > 0 && isConnectable(p * 4)) {
+              visited[p] = 1;
+              queue.push(p);
+            }
+          }
+        }
+
+        let head = 0;
+        while (head < queue.length) {
+          const p = queue[head++];
+          const x = p % iw;
+          const y = (p / iw) | 0;
+
+          if (x > 0) {
+            const np = p - 1;
+            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
+              visited[np] = 1; queue.push(np);
+            }
+          }
+          if (x < iw - 1) {
+            const np = p + 1;
+            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
+              visited[np] = 1; queue.push(np);
+            }
+          }
+          if (y > 0) {
+            const np = p - iw;
+            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
+              visited[np] = 1; queue.push(np);
+            }
+          }
+          if (y < ih - 1) {
+            const np = p + iw;
+            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
+              visited[np] = 1; queue.push(np);
+            }
+          }
+        }
+
+        for (let p = 0; p < visited.length; p++) {
+          if (!visited[p]) continue;
+          const idx = p * 4;
+          const a0 = data[idx + 3];
+          if (a0 === 0) continue;
+
+          const dr = data[idx] - bgR;
+          const dg = data[idx + 1] - bgG;
+          const db = data[idx + 2] - bgB;
+          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+          const newAlpha = computeAlpha(dist);
+          data[idx + 3] = Math.round(a0 * newAlpha / 255);
+        }
+      } else {
+        for (let i = 0; i < data.length; i += 4) {
+          const a0 = data[i + 3];
+          if (a0 === 0) continue;
+
+          const dr = data[i] - bgR;
+          const dg = data[i + 1] - bgG;
+          const db = data[i + 2] - bgB;
+          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+          const newAlpha = computeAlpha(dist);
+          data[i + 3] = Math.round(a0 * newAlpha / 255);
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+
+      const newKey = 'img_' + (++imageKeyCounter);
+      const newImg = new Image();
+      newImg.onload = () => {
+        imageRegistry.set(newKey, newImg);
+        anno.srcKey = newKey;
+        renderAnnotations();
+        saveHistory();
+      };
+      newImg.src = cnv.toDataURL('image/png');
+
+      return true;
+    }
+
+    btnBgRemove.addEventListener('click', () => {
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (!a || a.type !== 'image') return;
+      btnBgRemove.disabled = true;
+      const ok = removeImageBackground(a, state.bgRemoveConnected);
+      setTimeout(() => { btnBgRemove.disabled = false; }, 400);
+      if (!ok) btnBgRemove.disabled = false;
+    });
+
+    btnBgConnected.addEventListener('click', () => {
+      state.bgRemoveConnected = !state.bgRemoveConnected;
+      btnBgConnected.classList.toggle('active', state.bgRemoveConnected);
+    });
+
+    // -------------------------------------------------------------
+    // 複製
+    // -------------------------------------------------------------
+    function duplicateSelected() {
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (!a) return;
+
+      const newAnno = JSON.parse(JSON.stringify(a));
+      newAnno.id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+
+      const offset = Math.max(10, 24 / state.scale);
+      if (isBoxType(newAnno.type) || newAnno.type === 'text') {
+        newAnno.x += offset;
+        newAnno.y += offset;
+      } else if (newAnno.type === 'arrow') {
+        newAnno.x1 += offset;
+        newAnno.y1 += offset;
+        newAnno.x2 += offset;
+        newAnno.y2 += offset;
+      }
+
+      state.annotations.push(newAnno);
+      state.selectedId = newAnno.id;
+      bringToFront(newAnno.id);
+      updateUI();
+      renderAnnotations();
+      saveHistory();
+    }
+
+    btnDuplicate.addEventListener('click', duplicateSelected);
+
+    // -------------------------------------------------------------
+    // プロパティ操作
     // -------------------------------------------------------------
     textContentInput.addEventListener('input', (e) => {
       const a = state.annotations.find(x => x.id === state.selectedId);
@@ -2207,7 +2766,7 @@
       const val = Number(e.target.value);
       if (a.type === 'text') {
         a.size = val;
-      } else {
+      } else if (a.type !== 'hide' && a.type !== 'image') {
         a.strokeWidth = val;
       }
       renderAnnotations();
@@ -2217,7 +2776,7 @@
       if (!a) return;
       const val = Number(e.target.value);
       if (a.type === 'text') state.defaults.textSize = val;
-      else state.defaults.strokeWidth = val;
+      else if (a.type !== 'hide' && a.type !== 'image') state.defaults.strokeWidth = val;
       saveHistory();
     });
 
@@ -2229,6 +2788,15 @@
       renderAnnotations();
     });
     outlineSlider.addEventListener('change', () => saveHistory());
+
+    shadowSlider.addEventListener('input', (e) => {
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (!a) return;
+      a.shadow = Number(e.target.value);
+      state.defaults.shadow = a.shadow;
+      renderAnnotations();
+    });
+    shadowSlider.addEventListener('change', () => saveHistory());
 
     radiusSlider.addEventListener('input', (e) => {
       const a = state.annotations.find(x => x.id === state.selectedId);
@@ -2251,6 +2819,17 @@
     });
     arrowSlider.addEventListener('change', () => saveHistory());
 
+    btnArrowEnds.addEventListener('click', () => {
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (a && a.type === 'arrow') {
+        a.arrowEnds = !a.arrowEnds;
+        state.defaults.arrowEnds = a.arrowEnds;
+        updateUI();
+        renderAnnotations();
+        saveHistory();
+      }
+    });
+
     btnAspectSquare.addEventListener('click', () => {
       const a = state.annotations.find(x => x.id === state.selectedId);
       if (a && (a.type === 'rect' || a.type === 'hide')) {
@@ -2268,24 +2847,13 @@
       }
     });
 
-    btnShadowToggle.addEventListener('click', () => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a) {
-        a.hasShadow = !a.hasShadow;
-        state.defaults.hasShadow = a.hasShadow;
-        updateUI();
-        saveHistory();
-        renderAnnotations();
-      }
-    });
-
     // -------------------------------------------------------------
     // 微調整ボタン
     // -------------------------------------------------------------
     function applyNudge(dx, dy) {
       const a = state.annotations.find(x => x.id === state.selectedId);
       if (!a) return;
-      if (a.type === 'rect' || a.type === 'hide' || a.type === 'text') {
+      if (isBoxType(a.type) || a.type === 'text') {
         a.x += dx;
         a.y += dy;
       } else if (a.type === 'arrow') {
@@ -2346,7 +2914,7 @@
     });
 
     // -------------------------------------------------------------
-    // エクスポート（保存）
+    // エクスポート
     // -------------------------------------------------------------
     btnExport.addEventListener('click', () => {
       if (!state.image) return;
@@ -2361,28 +2929,23 @@
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
           exportCtx.save();
-          if (a.hasShadow) {
-            exportCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-            exportCtx.shadowBlur = 8;
-            exportCtx.shadowOffsetX = 3;
-            exportCtx.shadowOffsetY = 3;
-          }
+          applyShadow(exportCtx, a);
           drawRoundedRect(exportCtx, a);
           exportCtx.restore();
         } else if (a.type === 'hide') {
           drawHide(exportCtx, a);
         } else if (a.type === 'arrow') {
           exportCtx.save();
-          if (a.hasShadow) {
-            exportCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-            exportCtx.shadowBlur = 8;
-            exportCtx.shadowOffsetX = 3;
-            exportCtx.shadowOffsetY = 3;
-          }
+          applyShadow(exportCtx, a);
           drawArrow(exportCtx, a);
           exportCtx.restore();
         } else if (a.type === 'text') {
           drawText(exportCtx, a);
+        } else if (a.type === 'image') {
+          exportCtx.save();
+          applyShadow(exportCtx, a);
+          drawImageAnno(exportCtx, a);
+          exportCtx.restore();
         }
       });
 
@@ -2394,7 +2957,6 @@
       saveModal.classList.remove('active');
     });
 
-    // 初期化実行
     init();
   </script>
 </body>
