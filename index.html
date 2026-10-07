@@ -530,19 +530,31 @@
 
     #save-modal img {
       max-width: 90%;
-      max-height: 70vh;
+      max-height: 60vh;
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       object-fit: contain;
+      -webkit-user-select: auto;
+      user-select: auto;
+      -webkit-touch-callout: default;
     }
 
     #save-modal p {
       color: #fff;
-      font-size: 14px;
+      font-size: 13px;
       text-align: center;
+      line-height: 1.5;
+      opacity: 0.9;
     }
 
-    .close-modal-btn {
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .copy-modal-btn {
       background: #3a3a3c;
       color: white;
       border: none;
@@ -550,6 +562,30 @@
       border-radius: 20px;
       font-size: 15px;
       font-weight: 600;
+      cursor: pointer;
+      min-width: 96px;
+    }
+
+    .copy-modal-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .share-modal-btn {
+      background: var(--accent-color);
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      min-width: 96px;
+    }
+
+    .share-modal-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
     }
 
     #drop-overlay {
@@ -607,7 +643,7 @@
   <div id="editor-container">
     <div id="start-screen">
       <label class="file-select-label" for="image-input">写真を選択</label>
-      <div class="start-hint">または画像をここにドラッグ＆ドロップ</div>
+      <div class="start-hint">または画像をここにドラッグ＆ドロップ / Ctrl+Vで貼り付け</div>
       <input type="file" id="image-input" accept="image/*">
     </div>
 
@@ -711,8 +747,11 @@
 
   <div id="save-modal">
     <img id="save-preview" src="" alt="完成画像">
-    <p>画像を長押しして「"写真"に保存」を選択してください</p>
-    <button class="close-modal-btn" id="btn-close-modal">閉じる</button>
+    <p>「コピー」でクリップボードへ、「共有」で他のアプリへ送れます。<br>写真に保存する場合は画像を長押ししてください。</p>
+    <div class="modal-actions">
+      <button class="copy-modal-btn" id="btn-copy-image">コピー</button>
+      <button class="share-modal-btn" id="btn-share-image">共有</button>
+    </div>
   </div>
 
   <div id="drop-overlay">
@@ -828,7 +867,8 @@
     const btnBgConnected = document.getElementById('btn-bg-connected');
     const saveModal = document.getElementById('save-modal');
     const savePreview = document.getElementById('save-preview');
-    const btnCloseModal = document.getElementById('btn-close-modal');
+    const btnCopyImage = document.getElementById('btn-copy-image');
+    const btnShareImage = document.getElementById('btn-share-image');
     const dropOverlay = document.getElementById('drop-overlay');
     const dropOverlayText = document.getElementById('drop-overlay-text');
 
@@ -1053,6 +1093,7 @@
       renderColorPalette();
       setupFontSelect();
       setupDragAndDrop();
+      setupPasteHandler();
 
       document.querySelectorAll('.tool-item[data-tool]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1199,6 +1240,46 @@
     }
 
     // -------------------------------------------------------------
+    // ペースト（Ctrl+V / ペーストメニュー）
+    //   - 画像未読込：1枚目として読み込む
+    //   - 画像読込済：中央に配置画像として追加
+    // -------------------------------------------------------------
+    function setupPasteHandler() {
+      const handlePaste = (e) => {
+        if (!e.clipboardData) return;
+        const items = e.clipboardData.items;
+        if (!items) return;
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.kind !== 'file') continue;
+          if (!item.type || item.type.indexOf('image/') !== 0) continue;
+
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          e.preventDefault();
+
+          if (!state.image) {
+            // 1枚目：通常の画像として読み込む
+            loadImageFile(file);
+          } else {
+            // 2枚目以降：中央に配置画像として追加
+            placeImageFromFile(file, {
+              x: state.imgWidth / 2,
+              y: state.imgHeight / 2
+            });
+          }
+          return;
+        }
+      };
+
+      document.addEventListener('paste', handlePaste);
+      // iOSのコンテキストメニュー経由のペーストに備えて window にも登録
+      window.addEventListener('paste', handlePaste);
+    }
+
+    // -------------------------------------------------------------
     // ドラッグ&ドロップ
     // -------------------------------------------------------------
     let dragDepth = 0;
@@ -1329,10 +1410,6 @@
 
     // -------------------------------------------------------------
     // 「隠す」塗り画像の生成
-    //   - 枠ローカル座標（回転を打ち消した座標系）で考える
-    //   - 上下左右4辺すべてから色を取得し、位置に応じた重みで
-    //     合成することでシームレスな塗りを実現（4分割を解消）
-    //   - バイリニア補間で滑らかにサンプリング
     // -------------------------------------------------------------
     function buildHideFillCanvas(a) {
       const aabb = getRotatedAABB(a);
@@ -1373,7 +1450,6 @@
 
       const sampleDist = Math.max(2, Math.min(12, Math.max(rectW, rectH) * 0.02));
 
-      // ソース画像からのバイリニアサンプリング
       const sampleWorld = (wx, wy) => {
         let fx = wx * kx;
         let fy = wy * ky;
@@ -1415,47 +1491,38 @@
         for (let i = 0; i < sw; i++) {
           const wx = aabb.x + (i + 0.5) * invW;
 
-          // ワールド → 枠ローカル（中心原点、回転打ち消し）
           const dx = wx - cx;
           const dy = wy - cy;
           const lx = dx * cosT + dy * sinT;
           const ly = -dx * sinT + dy * cosT;
 
-          // 正規化位置（0..1）
           const u = (lx + hw) / rectW;
           const v = (ly + hh) / rectH;
 
-          // 4辺それぞれのサンプリング位置（直線辺の範囲にクランプ）
           const topLX = lx < -hw ? -hw : (lx > hw ? hw : lx);
           const leftLY = ly < -hh ? -hh : (ly > hh ? hh : ly);
 
-          // 上
           const tWX = toWorldX(topLX, -hh - sampleDist);
           const tWY = toWorldY(topLX, -hh - sampleDist);
           const cTop = sampleWorld(tWX, tWY);
 
-          // 下
           const bWX = toWorldX(topLX, hh + sampleDist);
           const bWY = toWorldY(topLX, hh + sampleDist);
           const cBot = sampleWorld(bWX, bWY);
 
-          // 左
           const lWX = toWorldX(-hw - sampleDist, leftLY);
           const lWY = toWorldY(-hw - sampleDist, leftLY);
           const cLeft = sampleWorld(lWX, lWY);
 
-          // 右
           const rWX = toWorldX(hw + sampleDist, leftLY);
           const rWY = toWorldY(hw + sampleDist, leftLY);
           const cRight = sampleWorld(rWX, rWY);
 
-          // 位置に応じた重み（合計は常に 2）
           const wt = 1 - v;
           const wb = v;
           const wl = 1 - u;
           const wr = u;
 
-          // 4辺の色を滑らかに合成（0.5 = 1/重み合計）
           const r = (cTop[0] * wt + cBot[0] * wb + cLeft[0] * wl + cRight[0] * wr) * 0.5;
           const g = (cTop[1] * wt + cBot[1] * wb + cLeft[1] * wl + cRight[1] * wr) * 0.5;
           const b = (cTop[2] * wt + cBot[2] * wb + cLeft[2] * wl + cRight[2] * wr) * 0.5;
@@ -1478,8 +1545,7 @@
         Math.round(a.y),
         Math.round(a.w),
         Math.round(a.h),
-        Math.round((a.rotation || 0) * 10),
-        Math.round((a.borderRadius || 0) * 10)
+        Math.round((a.rotation || 0) * 10)
       ].join('_');
 
       const cached = hideFillCache.get(a);
@@ -1744,7 +1810,6 @@
             id, type: 'hide',
             x: coords.x, y: coords.y,
             w: 1, h: 1,
-            borderRadius: state.defaults.hideRadius,
             rotation: 0
           };
           state.annotations.push(currentAnnotation);
@@ -2056,7 +2121,8 @@
           const minY = Math.min(a.y, a.y + a.h);
           const maxY = Math.max(a.y, a.y + a.h);
 
-          const margin = 15 / state.scale;
+          // 「隠す」は枠内タップでも選択されやすいよう判定マージンを広めに
+          const margin = (a.type === 'hide' ? 30 : 15) / state.scale;
 
           if (lx >= minX - margin && lx <= maxX + margin &&
               ly >= minY - margin && ly <= maxY + margin) {
@@ -2205,6 +2271,7 @@
     }
 
     // 「隠す」: 生成済みの塗り画像を、回転クリップを通してAABBへ描画
+    // 角丸は廃止（常に r = 0）
     function drawHide(ctx, a) {
       const x0 = Math.min(a.x, a.x + a.w);
       const y0 = Math.min(a.y, a.y + a.h);
@@ -2216,9 +2283,6 @@
       if (!fill || !fill.width) return;
 
       const aabb = getRotatedAABB(a);
-      const maxR = Math.min(w, h) / 2;
-      const pct = (a.borderRadius != null ? a.borderRadius : 0) / 100;
-      const r = Math.max(0, Math.min(maxR, maxR * pct));
       const rad = (a.rotation || 0) * Math.PI / 180;
       const c = getRotCenter(a);
 
@@ -2228,7 +2292,7 @@
         ctx.rotate(rad);
         ctx.translate(-c.x, -c.y);
       }
-      pathRoundedRect(ctx, x0, y0, w, h, r);
+      pathRoundedRect(ctx, x0, y0, w, h, 0);
       ctx.clip();
 
       ctx.save();
@@ -2437,8 +2501,9 @@
 
       document.getElementById('font-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
       document.getElementById('text-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
+      // 角丸スライダーは「四角」のみ表示（「隠す」は廃止）
       document.getElementById('radius-prop-row').style.display =
-        (a.type === 'rect' || a.type === 'hide') ? 'flex' : 'none';
+        (a.type === 'rect') ? 'flex' : 'none';
       document.getElementById('arrow-prop-row').style.display = (a.type === 'arrow') ? 'flex' : 'none';
       document.getElementById('size-prop-row').style.display =
         (a.type === 'hide' || a.type === 'image') ? 'none' : 'flex';
@@ -2461,7 +2526,7 @@
       setSliderRange(outlineSlider, state.ranges.outlineWidth, a.outlineWidth != null ? a.outlineWidth : 0);
       setSliderRange(shadowSlider, state.ranges.shadow, a.shadow != null ? a.shadow : 0);
 
-      if (a.type === 'rect' || a.type === 'hide') {
+      if (a.type === 'rect') {
         radiusSlider.value = (a.borderRadius != null) ? a.borderRadius : 0;
       }
 
@@ -2798,12 +2863,12 @@
     });
     shadowSlider.addEventListener('change', () => saveHistory());
 
+    // 角丸スライダー：四角のみ有効（隠すは廃止）
     radiusSlider.addEventListener('input', (e) => {
       const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && (a.type === 'rect' || a.type === 'hide')) {
+      if (a && a.type === 'rect') {
         a.borderRadius = Number(e.target.value);
-        if (a.type === 'rect') state.defaults.borderRadius = a.borderRadius;
-        else state.defaults.hideRadius = a.borderRadius;
+        state.defaults.borderRadius = a.borderRadius;
         renderAnnotations();
       }
     });
@@ -2914,11 +2979,39 @@
     });
 
     // -------------------------------------------------------------
-    // エクスポート
+    // エクスポート / 共有 / コピー
     // -------------------------------------------------------------
-    btnExport.addEventListener('click', () => {
-      if (!state.image) return;
+    let previewObjectURL = null;
+    let previewBlob = null;
 
+    function releasePreviewObjectURL() {
+      if (previewObjectURL) {
+        try { URL.revokeObjectURL(previewObjectURL); } catch (e) {}
+        previewObjectURL = null;
+      }
+    }
+
+    function showSavePreview(url, blob) {
+      previewBlob = blob || null;
+      previewObjectURL = blob ? url : null;
+
+      let revealed = false;
+      const reveal = () => {
+        if (revealed) return;
+        revealed = true;
+        savePreview.onload = null;
+        savePreview.onerror = null;
+        saveModal.classList.add('active');
+      };
+
+      savePreview.onload = reveal;
+      savePreview.onerror = reveal;
+      savePreview.src = url;
+
+      setTimeout(reveal, 1200);
+    }
+
+    function buildExportCanvas() {
       const exportCanvas = document.createElement('canvas');
       exportCanvas.width = state.imgWidth;
       exportCanvas.height = state.imgHeight;
@@ -2949,12 +3042,158 @@
         }
       });
 
-      savePreview.src = exportCanvas.toDataURL('image/png');
-      saveModal.classList.add('active');
+      return exportCanvas;
+    }
+
+    // Canvas → Blob のユーティリティ
+    function canvasToBlob(canvas) {
+      return new Promise((resolve) => {
+        if (typeof canvas.toBlob === 'function') {
+          canvas.toBlob((b) => resolve(b), 'image/png');
+        } else {
+          try {
+            const dataURL = canvas.toDataURL('image/png');
+            const bin = atob(dataURL.split(',')[1]);
+            const len = bin.length;
+            const buf = new Uint8Array(len);
+            for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i);
+            resolve(new Blob([buf], { type: 'image/png' }));
+          } catch (e) {
+            resolve(null);
+          }
+        }
+      });
+    }
+
+    btnExport.addEventListener('click', () => {
+      if (!state.image) return;
+
+      const exportCanvas = buildExportCanvas();
+
+      releasePreviewObjectURL();
+
+      canvasToBlob(exportCanvas).then((blob) => {
+        if (blob) {
+          showSavePreview(URL.createObjectURL(blob), blob);
+        } else {
+          showSavePreview(exportCanvas.toDataURL('image/png'), null);
+        }
+      });
     });
 
-    btnCloseModal.addEventListener('click', () => {
-      saveModal.classList.remove('active');
+    // -------------------------------------------------------------
+    // Web Share API で PNG ファイルを共有
+    // -------------------------------------------------------------
+    async function shareExportImage() {
+      if (!state.image) return;
+
+      const exportCanvas = buildExportCanvas();
+      const blob = await canvasToBlob(exportCanvas);
+
+      if (!blob) {
+        alert('画像の生成に失敗しました。');
+        return;
+      }
+
+      const fileName = 'cocomark_' + Date.now() + '.png';
+      let file;
+      try {
+        file = new File([blob], fileName, { type: 'image/png' });
+      } catch (e) {
+        file = blob;
+        file.name = fileName;
+      }
+
+      if (navigator.canShare && navigator.share) {
+        try {
+          if (navigator.canShare({ files: [file] })) {
+            btnShareImage.disabled = true;
+            await navigator.share({
+              files: [file],
+              title: 'ココマーク',
+              text: 'ココマークで作成した画像'
+            });
+            return;
+          }
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+        } finally {
+          btnShareImage.disabled = false;
+        }
+      }
+
+      // フォールバック：ダウンロード
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 1000);
+      } catch (e) {
+        alert('この端末では共有機能が利用できません。画像を長押しして保存してください。');
+      }
+    }
+
+    btnShareImage.addEventListener('click', shareExportImage);
+
+    // -------------------------------------------------------------
+    // クリップボードへコピー
+    // -------------------------------------------------------------
+    async function copyExportImage() {
+      if (!state.image) return;
+
+      // プレビュー時に生成した Blob を優先的に使う
+      let blob = previewBlob;
+      if (!blob) {
+        const exportCanvas = buildExportCanvas();
+        blob = await canvasToBlob(exportCanvas);
+      }
+
+      if (!blob) {
+        alert('画像の生成に失敗しました。');
+        return;
+      }
+
+      if (!navigator.clipboard || !window.ClipboardItem) {
+        alert('この端末ではコピーが利用できません。');
+        return;
+      }
+
+      try {
+        btnCopyImage.disabled = true;
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ]);
+        const orig = btnCopyImage.textContent;
+        btnCopyImage.textContent = 'コピー完了';
+        setTimeout(() => { btnCopyImage.textContent = orig; }, 1500);
+      } catch (err) {
+        alert('コピーに失敗しました。画像を長押しして保存してください。');
+      } finally {
+        btnCopyImage.disabled = false;
+      }
+    }
+
+    btnCopyImage.addEventListener('click', copyExportImage);
+
+    // -------------------------------------------------------------
+    // モーダルの外側タップで閉じる（「閉じる」ボタン廃止）
+    // -------------------------------------------------------------
+    saveModal.addEventListener('click', (e) => {
+      if (e.target === saveModal) {
+        saveModal.classList.remove('active');
+      }
+    });
+
+    // ページ離脱時に Object URL を解放
+    window.addEventListener('pagehide', () => {
+      releasePreviewObjectURL();
     });
 
     init();
