@@ -530,7 +530,7 @@
 
     #save-modal img {
       max-width: 90%;
-      max-height: 60vh;
+      max-height: 55vh;
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       object-fit: contain;
@@ -539,12 +539,34 @@
       -webkit-touch-callout: default;
     }
 
-    #save-modal p {
+    .save-info {
       color: #fff;
-      font-size: 13px;
-      text-align: center;
-      line-height: 1.5;
-      opacity: 0.9;
+      font-size: 12px;
+      line-height: 1.6;
+      background: rgba(255, 255, 255, 0.08);
+      border: 0.5px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 8px 14px;
+      min-width: 240px;
+      max-width: 90%;
+    }
+
+    .save-info-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .save-info-label {
+      color: #a0a0a5;
+      flex-shrink: 0;
+    }
+
+    .save-info-value {
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
     }
 
     .modal-actions {
@@ -747,7 +769,20 @@
 
   <div id="save-modal">
     <img id="save-preview" src="" alt="完成画像">
-    <p>「コピー」でクリップボードへ、「共有」で他のアプリへ送れます。<br>写真に保存する場合は画像を長押ししてください。</p>
+    <div class="save-info" id="save-info">
+      <div class="save-info-row">
+        <span class="save-info-label">サイズ</span>
+        <span class="save-info-value" id="save-info-dim">-</span>
+      </div>
+      <div class="save-info-row">
+        <span class="save-info-label">元</span>
+        <span class="save-info-value" id="save-info-orig">-</span>
+      </div>
+      <div class="save-info-row">
+        <span class="save-info-label">編集後</span>
+        <span class="save-info-value" id="save-info-edited">-</span>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="copy-modal-btn" id="btn-copy-image">コピー</button>
       <button class="share-modal-btn" id="btn-share-image">共有</button>
@@ -808,6 +843,8 @@
       historyIndex: -1,
       recentColors: [],
       bgRemoveConnected: true,
+      originalFileSize: 0,
+      originalFileType: '',
       ranges: {
         textSize:     { min: 8,  max: 200, step: 1 },
         strokeWidth:  { min: 1,  max: 40,  step: 1 },
@@ -867,6 +904,9 @@
     const btnBgConnected = document.getElementById('btn-bg-connected');
     const saveModal = document.getElementById('save-modal');
     const savePreview = document.getElementById('save-preview');
+    const saveInfoDim = document.getElementById('save-info-dim');
+    const saveInfoOrig = document.getElementById('save-info-orig');
+    const saveInfoEdited = document.getElementById('save-info-edited');
     const btnCopyImage = document.getElementById('btn-copy-image');
     const btnShareImage = document.getElementById('btn-share-image');
     const dropOverlay = document.getElementById('drop-overlay');
@@ -944,6 +984,27 @@
         if (wy > maxY) maxY = wy;
       }
       return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
+    // バイト数を「KB / MB」で見やすく整形
+    function formatSize(bytes) {
+      if (!bytes || bytes <= 0) return '-';
+      const kb = bytes / 1024;
+      if (kb < 100) return kb.toFixed(1) + ' KB';
+      return (kb / 1024).toFixed(2) + ' MB';
+    }
+
+    // MIME タイプを表示用の形式名へ変換
+    function formatMime(mime) {
+      if (!mime) return '不明';
+      const sub = (mime.split('/')[1] || '').toLowerCase();
+      const map = {
+        'jpeg': 'JPEG', 'jpg': 'JPEG', 'pjpeg': 'JPEG',
+        'png': 'PNG', 'gif': 'GIF', 'webp': 'WebP',
+        'heic': 'HEIC', 'heif': 'HEIF', 'bmp': 'BMP',
+        'svg+xml': 'SVG', 'tiff': 'TIFF', 'avif': 'AVIF'
+      };
+      return map[sub] || sub.toUpperCase();
     }
 
     // -------------------------------------------------------------
@@ -1134,6 +1195,10 @@
     function loadImageFile(file) {
       if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
 
+      // 元のファイル情報を保持（保存画面の表示用）
+      state.originalFileSize = file.size || 0;
+      state.originalFileType = file.type || '';
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const img = new Image();
@@ -1241,8 +1306,6 @@
 
     // -------------------------------------------------------------
     // ペースト（Ctrl+V / ペーストメニュー）
-    //   - 画像未読込：1枚目として読み込む
-    //   - 画像読込済：中央に配置画像として追加
     // -------------------------------------------------------------
     function setupPasteHandler() {
       const handlePaste = (e) => {
@@ -1261,10 +1324,8 @@
           e.preventDefault();
 
           if (!state.image) {
-            // 1枚目：通常の画像として読み込む
             loadImageFile(file);
           } else {
-            // 2枚目以降：中央に配置画像として追加
             placeImageFromFile(file, {
               x: state.imgWidth / 2,
               y: state.imgHeight / 2
@@ -1275,7 +1336,6 @@
       };
 
       document.addEventListener('paste', handlePaste);
-      // iOSのコンテキストメニュー経由のペーストに備えて window にも登録
       window.addEventListener('paste', handlePaste);
     }
 
@@ -2121,7 +2181,6 @@
           const minY = Math.min(a.y, a.y + a.h);
           const maxY = Math.max(a.y, a.y + a.h);
 
-          // 「隠す」は枠内タップでも選択されやすいよう判定マージンを広めに
           const margin = (a.type === 'hide' ? 30 : 15) / state.scale;
 
           if (lx >= minX - margin && lx <= maxX + margin &&
@@ -2212,20 +2271,26 @@
       }
     }
 
+    // フチが無いときだけ影を適用して良いか
+    function shouldApplyShadowForOutline(a) {
+      const outline = (a.outlineWidth != null) ? a.outlineWidth : 0;
+      return outline <= 0 && a.shadow && a.shadow > 0;
+    }
+
     function renderAnnotations() {
       annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
 
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
           annoCtx.save();
-          applyShadow(annoCtx, a);
+          if (shouldApplyShadowForOutline(a)) applyShadow(annoCtx, a);
           drawRoundedRect(annoCtx, a);
           annoCtx.restore();
         } else if (a.type === 'hide') {
           drawHide(annoCtx, a);
         } else if (a.type === 'arrow') {
           annoCtx.save();
-          applyShadow(annoCtx, a);
+          if (shouldApplyShadowForOutline(a)) applyShadow(annoCtx, a);
           drawArrow(annoCtx, a);
           annoCtx.restore();
         } else if (a.type === 'text') {
@@ -2259,9 +2324,14 @@
 
         const outline = a.outlineWidth != null ? a.outlineWidth : 2;
         if (outline > 0) {
+          // フチあり：影は付けない
+          ctx.save();
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = a.strokeWidth + outline * 2;
           ctx.stroke();
+          ctx.restore();
         }
 
         ctx.strokeStyle = a.color;
@@ -2360,10 +2430,15 @@
 
       const outline = a.outlineWidth != null ? a.outlineWidth : 2;
       if (outline > 0) {
+        // フチあり：影は付けない
+        ctx.save();
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = a.strokeWidth + outline * 2;
         drawPath();
         ctx.stroke();
+        ctx.restore();
       }
 
       ctx.strokeStyle = a.color;
@@ -2372,6 +2447,7 @@
       ctx.stroke();
     }
 
+    // 文字：フチがあるときは影なし。フチが0のときだけ本体に影。
     function drawText(ctx, a) {
       withRotation(ctx, a, () => {
         ctx.font = fontString(a);
@@ -2382,27 +2458,31 @@
         const outline = (a.outlineWidth != null) ? a.outlineWidth : 0;
         const shadow = (a.shadow != null) ? a.shadow : 0;
 
-        if (shadow > 0) {
-          ctx.save();
-          applyShadow(ctx, a);
-
-          if (outline > 0) {
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = outline * 2;
-            ctx.strokeText(a.text, a.x, a.y);
-          }
-          ctx.fillStyle = a.color;
-          ctx.fillText(a.text, a.x, a.y);
-          ctx.restore();
-        }
-
         if (outline > 0) {
+          // フチあり：影なし
+          ctx.save();
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = outline * 2;
           ctx.strokeText(a.text, a.x, a.y);
+          ctx.restore();
+
+          ctx.fillStyle = a.color;
+          ctx.fillText(a.text, a.x, a.y);
+        } else {
+          // フチなし：文字本体に影
+          if (shadow > 0) {
+            ctx.save();
+            applyShadow(ctx, a);
+            ctx.fillStyle = a.color;
+            ctx.fillText(a.text, a.x, a.y);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = a.color;
+            ctx.fillText(a.text, a.x, a.y);
+          }
         }
-        ctx.fillStyle = a.color;
-        ctx.fillText(a.text, a.x, a.y);
       });
     }
 
@@ -2501,7 +2581,6 @@
 
       document.getElementById('font-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
       document.getElementById('text-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
-      // 角丸スライダーは「四角」のみ表示（「隠す」は廃止）
       document.getElementById('radius-prop-row').style.display =
         (a.type === 'rect') ? 'flex' : 'none';
       document.getElementById('arrow-prop-row').style.display = (a.type === 'arrow') ? 'flex' : 'none';
@@ -2863,7 +2942,6 @@
     });
     shadowSlider.addEventListener('change', () => saveHistory());
 
-    // 角丸スライダー：四角のみ有効（隠すは廃止）
     radiusSlider.addEventListener('input', (e) => {
       const a = state.annotations.find(x => x.id === state.selectedId);
       if (a && a.type === 'rect') {
@@ -2991,9 +3069,19 @@
       }
     }
 
-    function showSavePreview(url, blob) {
+    function updateSaveInfo(editedBytes) {
+      saveInfoDim.textContent = state.imgWidth + ' × ' + state.imgHeight + ' px';
+      saveInfoOrig.textContent =
+        formatSize(state.originalFileSize) + ' (' + formatMime(state.originalFileType) + ')';
+      saveInfoEdited.textContent =
+        formatSize(editedBytes) + ' (PNG)';
+    }
+
+    function showSavePreview(url, blob, editedBytes) {
       previewBlob = blob || null;
       previewObjectURL = blob ? url : null;
+
+      updateSaveInfo(editedBytes || 0);
 
       let revealed = false;
       const reveal = () => {
@@ -3022,14 +3110,14 @@
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
           exportCtx.save();
-          applyShadow(exportCtx, a);
+          if (shouldApplyShadowForOutline(a)) applyShadow(exportCtx, a);
           drawRoundedRect(exportCtx, a);
           exportCtx.restore();
         } else if (a.type === 'hide') {
           drawHide(exportCtx, a);
         } else if (a.type === 'arrow') {
           exportCtx.save();
-          applyShadow(exportCtx, a);
+          if (shouldApplyShadowForOutline(a)) applyShadow(exportCtx, a);
           drawArrow(exportCtx, a);
           exportCtx.restore();
         } else if (a.type === 'text') {
@@ -3045,7 +3133,6 @@
       return exportCanvas;
     }
 
-    // Canvas → Blob のユーティリティ
     function canvasToBlob(canvas) {
       return new Promise((resolve) => {
         if (typeof canvas.toBlob === 'function') {
@@ -3073,10 +3160,15 @@
       releasePreviewObjectURL();
 
       canvasToBlob(exportCanvas).then((blob) => {
-        if (blob) {
-          showSavePreview(URL.createObjectURL(blob), blob);
+             if (blob) {
+          showSavePreview(URL.createObjectURL(blob), blob, blob.size);
         } else {
-          showSavePreview(exportCanvas.toDataURL('image/png'), null);
+          const dataURL = exportCanvas.toDataURL('image/png');
+          // data URL から概算サイズを算出（base64は元データの約4/3）
+          const comma = dataURL.indexOf(',');
+          const b64 = comma >= 0 ? dataURL.length - comma - 1 : 0;
+          const approxBytes = Math.round(b64 * 3 / 4);
+          showSavePreview(dataURL, null, approxBytes);
         }
       });
     });
@@ -3148,14 +3240,13 @@
     async function copyExportImage() {
       if (!state.image) return;
 
-      // プレビュー時に生成した Blob を優先的に使う
       let blob = previewBlob;
       if (!blob) {
         const exportCanvas = buildExportCanvas();
         blob = await canvasToBlob(exportCanvas);
       }
 
-      if (!blob) {
+ if (!blob) {
         alert('画像の生成に失敗しました。');
         return;
       }
@@ -3183,7 +3274,7 @@
     btnCopyImage.addEventListener('click', copyExportImage);
 
     // -------------------------------------------------------------
-    // モーダルの外側タップで閉じる（「閉じる」ボタン廃止）
+    // モーダルの外側タップで閉じる
     // -------------------------------------------------------------
     saveModal.addEventListener('click', (e) => {
       if (e.target === saveModal) {
@@ -3191,7 +3282,6 @@
       }
     });
 
-    // ページ離脱時に Object URL を解放
     window.addEventListener('pagehide', () => {
       releasePreviewObjectURL();
     });
