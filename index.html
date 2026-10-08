@@ -986,7 +986,6 @@
       return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     }
 
-    // バイト数を「KB / MB」で見やすく整形
     function formatSize(bytes) {
       if (!bytes || bytes <= 0) return '-';
       const kb = bytes / 1024;
@@ -994,7 +993,6 @@
       return (kb / 1024).toFixed(2) + ' MB';
     }
 
-    // MIME タイプを表示用の形式名へ変換
     function formatMime(mime) {
       if (!mime) return '不明';
       const sub = (mime.split('/')[1] || '').toLowerCase();
@@ -1195,7 +1193,6 @@
     function loadImageFile(file) {
       if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
 
-      // 元のファイル情報を保持（保存画面の表示用）
       state.originalFileSize = file.size || 0;
       state.originalFileType = file.type || '';
 
@@ -2262,6 +2259,7 @@
     // -------------------------------------------------------------
     // 描画
     // -------------------------------------------------------------
+    // 影を有効化（a.shadow > 0 のときのみ）
     function applyShadow(ctx, a) {
       if (a.shadow && a.shadow > 0) {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
@@ -2271,10 +2269,12 @@
       }
     }
 
-    // フチが無いときだけ影を適用して良いか
-    function shouldApplyShadowForOutline(a) {
-      const outline = (a.outlineWidth != null) ? a.outlineWidth : 0;
-      return outline <= 0 && a.shadow && a.shadow > 0;
+    // 影を明示的に無効化
+    function clearShadow(ctx) {
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
     }
 
     function renderAnnotations() {
@@ -2282,17 +2282,11 @@
 
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
-          annoCtx.save();
-          if (shouldApplyShadowForOutline(a)) applyShadow(annoCtx, a);
           drawRoundedRect(annoCtx, a);
-          annoCtx.restore();
         } else if (a.type === 'hide') {
           drawHide(annoCtx, a);
         } else if (a.type === 'arrow') {
-          annoCtx.save();
-          if (shouldApplyShadowForOutline(a)) applyShadow(annoCtx, a);
           drawArrow(annoCtx, a);
-          annoCtx.restore();
         } else if (a.type === 'text') {
           drawText(annoCtx, a);
         } else if (a.type === 'image') {
@@ -2308,6 +2302,8 @@
       });
     }
 
+    // 四角：フチがあるときはフチにのみ影、本体には影なし。
+    // 　　　フチが無いときは本体に影。
     function drawRoundedRect(ctx, a) {
       withRotation(ctx, a, () => {
         const x0 = Math.min(a.x, a.x + a.w);
@@ -2322,21 +2318,33 @@
 
         ctx.lineJoin = 'round';
 
-        const outline = a.outlineWidth != null ? a.outlineWidth : 2;
+        const outline = a.outlineWidth != null ? a.outlineWidth : 0;
+
         if (outline > 0) {
-          // フチあり：影は付けない
+          // フチ（白）に影を付ける
           ctx.save();
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
+          applyShadow(ctx, a);
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = a.strokeWidth + outline * 2;
           ctx.stroke();
           ctx.restore();
-        }
 
-        ctx.strokeStyle = a.color;
-        ctx.lineWidth = a.strokeWidth;
-        ctx.stroke();
+          // 本体：影なし
+          ctx.save();
+          clearShadow(ctx);
+          ctx.strokeStyle = a.color;
+          ctx.lineWidth = a.strokeWidth;
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          // フチなし：本体に影
+          ctx.save();
+          applyShadow(ctx, a);
+          ctx.strokeStyle = a.color;
+          ctx.lineWidth = a.strokeWidth;
+          ctx.stroke();
+          ctx.restore();
+        }
       });
     }
 
@@ -2390,6 +2398,8 @@
       });
     }
 
+    // 矢印：フチがあるときはフチにのみ影、本体には影なし。
+    // 　　　フチが無いときは本体に影。
     function drawArrow(ctx, a) {
       const angle = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
       const headLen = a.arrowSize || 20;
@@ -2428,26 +2438,40 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      const outline = a.outlineWidth != null ? a.outlineWidth : 2;
+      const outline = a.outlineWidth != null ? a.outlineWidth : 0;
+
       if (outline > 0) {
-        // フチあり：影は付けない
+        // フチ（白）に影を付ける
         ctx.save();
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
+        applyShadow(ctx, a);
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = a.strokeWidth + outline * 2;
         drawPath();
         ctx.stroke();
         ctx.restore();
-      }
 
-      ctx.strokeStyle = a.color;
-      ctx.lineWidth = a.strokeWidth;
-      drawPath();
-      ctx.stroke();
+        // 本体：影なし
+        ctx.save();
+        clearShadow(ctx);
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = a.strokeWidth;
+        drawPath();
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // フチなし：本体に影
+        ctx.save();
+        applyShadow(ctx, a);
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = a.strokeWidth;
+        drawPath();
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
-    // 文字：フチがあるときは影なし。フチが0のときだけ本体に影。
+    // 文字：フチがあるときはフチ（白）にのみ影、本体の塗りには影なし。
+    // 　　　フチが無いときは本体に影。
     function drawText(ctx, a) {
       withRotation(ctx, a, () => {
         ctx.font = fontString(a);
@@ -2456,32 +2480,29 @@
         ctx.lineJoin = 'round';
 
         const outline = (a.outlineWidth != null) ? a.outlineWidth : 0;
-        const shadow = (a.shadow != null) ? a.shadow : 0;
 
         if (outline > 0) {
-          // フチあり：影なし
+          // フチ（白）に影
           ctx.save();
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
+          applyShadow(ctx, a);
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = outline * 2;
           ctx.strokeText(a.text, a.x, a.y);
           ctx.restore();
 
+          // 本体：影なし
+          ctx.save();
+          clearShadow(ctx);
           ctx.fillStyle = a.color;
           ctx.fillText(a.text, a.x, a.y);
+          ctx.restore();
         } else {
-          // フチなし：文字本体に影
-          if (shadow > 0) {
-            ctx.save();
-            applyShadow(ctx, a);
-            ctx.fillStyle = a.color;
-            ctx.fillText(a.text, a.x, a.y);
-            ctx.restore();
-          } else {
-            ctx.fillStyle = a.color;
-            ctx.fillText(a.text, a.x, a.y);
-          }
+          // フチなし：本体に影
+          ctx.save();
+          applyShadow(ctx, a);
+          ctx.fillStyle = a.color;
+          ctx.fillText(a.text, a.x, a.y);
+          ctx.restore();
         }
       });
     }
@@ -3109,17 +3130,11 @@
 
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
-          exportCtx.save();
-          if (shouldApplyShadowForOutline(a)) applyShadow(exportCtx, a);
           drawRoundedRect(exportCtx, a);
-          exportCtx.restore();
         } else if (a.type === 'hide') {
           drawHide(exportCtx, a);
         } else if (a.type === 'arrow') {
-          exportCtx.save();
-          if (shouldApplyShadowForOutline(a)) applyShadow(exportCtx, a);
           drawArrow(exportCtx, a);
-          exportCtx.restore();
         } else if (a.type === 'text') {
           drawText(exportCtx, a);
         } else if (a.type === 'image') {
@@ -3160,11 +3175,10 @@
       releasePreviewObjectURL();
 
       canvasToBlob(exportCanvas).then((blob) => {
-             if (blob) {
+        if (blob) {
           showSavePreview(URL.createObjectURL(blob), blob, blob.size);
         } else {
           const dataURL = exportCanvas.toDataURL('image/png');
-          // data URL から概算サイズを算出（base64は元データの約4/3）
           const comma = dataURL.indexOf(',');
           const b64 = comma >= 0 ? dataURL.length - comma - 1 : 0;
           const approxBytes = Math.round(b64 * 3 / 4);
@@ -3214,7 +3228,6 @@
         }
       }
 
-      // フォールバック：ダウンロード
       try {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -3246,7 +3259,7 @@
         blob = await canvasToBlob(exportCanvas);
       }
 
- if (!blob) {
+      if (!blob) {
         alert('画像の生成に失敗しました。');
         return;
       }
