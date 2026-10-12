@@ -72,6 +72,7 @@
       font-size: 16px;
       font-weight: 600;
       text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      white-space: nowrap;
     }
 
     .btn-icon {
@@ -86,6 +87,7 @@
       display: flex;
       align-items: center;
       gap: 4px;
+      white-space: nowrap;
     }
 
     .btn-icon:disabled {
@@ -650,7 +652,7 @@
 <body>
 
   <header>
-    <div style="display: flex; gap: 4px;">
+    <div style="display: flex; gap: 4px; align-items: center;">
       <button id="btn-undo" class="btn-icon" disabled>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
       </button>
@@ -659,7 +661,10 @@
       </button>
     </div>
     <h1>ココマーク</h1>
-    <button id="btn-export" class="btn-icon btn-primary">保存</button>
+    <div style="display: flex; gap: 4px; align-items: center;">
+      <button id="btn-new" class="btn-icon">新規</button>
+      <button id="btn-export" class="btn-icon btn-primary">保存</button>
+    </div>
   </header>
 
   <div id="editor-container">
@@ -764,6 +769,10 @@
     <button class="tool-item" data-tool="hide">
       <svg viewBox="0 0 24 24"><path d="M5 4h14a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5z"/><path d="M7.1 17.3l10.2-10.2 1.4 1.4L8.5 18.7z"/></svg>
       隠す
+    </button>
+    <button class="tool-item" data-tool="move">
+      <svg viewBox="0 0 24 24"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg>
+      移動
     </button>
   </toolbar>
 
@@ -882,6 +891,7 @@
     const propertiesPanel = document.getElementById('properties-panel');
     const colorColumn = document.querySelector('.panel-col-colors');
 
+    const btnNew = document.getElementById('btn-new');
     const btnUndo = document.getElementById('btn-undo');
     const btnRedo = document.getElementById('btn-redo');
     const btnExport = document.getElementById('btn-export');
@@ -916,6 +926,7 @@
 
     let srcPixels = null;
     const hideFillCache = new WeakMap();
+    const moveHoleCache = new WeakMap();
 
     const imageRegistry = new Map();
     let imageKeyCounter = 0;
@@ -947,7 +958,7 @@
     }
 
     function isBoxType(t) {
-      return t === 'rect' || t === 'hide' || t === 'image';
+      return t === 'rect' || t === 'hide' || t === 'image' || t === 'move';
     }
 
     function normalizeAngle(deg) {
@@ -1132,7 +1143,7 @@
         state.defaults.color = c;
         pushRecentColor(c);
         const currAnno = state.annotations.find(a => a.id === state.selectedId);
-        if (currAnno && currAnno.type !== 'image') {
+        if (currAnno && currAnno.type !== 'image' && currAnno.type !== 'move') {
           currAnno.color = c;
           saveHistory();
           renderAnnotations();
@@ -1614,6 +1625,26 @@
       return canvas;
     }
 
+    // 「移動」ツール用：切り取り元の穴埋め画像（キャッシュ付き）
+    function getMoveHoleFill(a) {
+      const key = [
+        Math.round(a.srcX),
+        Math.round(a.srcY),
+        Math.round(a.srcW),
+        Math.round(a.srcH)
+      ].join('_');
+
+      const cached = moveHoleCache.get(a);
+      if (cached && cached.key === key) return cached.canvas;
+
+      const canvas = buildHideFillCanvas({
+        x: a.srcX, y: a.srcY, w: a.srcW, h: a.srcH, rotation: 0
+      });
+      if (!canvas) return null;
+      moveHoleCache.set(a, { key, canvas });
+      return canvas;
+    }
+
     // -------------------------------------------------------------
     // 座標
     // -------------------------------------------------------------
@@ -1895,6 +1926,26 @@
           renderAnnotations();
           return;
         }
+
+        // 「移動」ツール：切り取り範囲を指定
+        if (state.activeTool === 'move') {
+          isDrawing = true;
+          currentAnnotation = {
+            id, type: 'move',
+            srcX: coords.x, srcY: coords.y,
+            srcW: 0, srcH: 0,
+            x: coords.x, y: coords.y,
+            w: 0, h: 0,
+            aspect: 1,
+            rotation: 0,
+            shadow: 0
+          };
+          state.annotations.push(currentAnnotation);
+          pendingSelectId = id;
+          bringToFront(id);
+          renderAnnotations();
+          return;
+        }
       }
 
       const hitAnno = getHitAnnotation(coords);
@@ -1959,6 +2010,19 @@
         } else if (currentAnnotation.type === 'arrow') {
           currentAnnotation.x2 = coords.x;
           currentAnnotation.y2 = coords.y;
+        } else if (currentAnnotation.type === 'move') {
+          const nx = Math.min(startImageCoords.x, coords.x);
+          const ny = Math.min(startImageCoords.y, coords.y);
+          const nw = Math.abs(coords.x - startImageCoords.x);
+          const nh = Math.abs(coords.y - startImageCoords.y);
+          currentAnnotation.srcX = nx;
+          currentAnnotation.srcY = ny;
+          currentAnnotation.srcW = nw;
+          currentAnnotation.srcH = nh;
+          currentAnnotation.x = nx;
+          currentAnnotation.y = ny;
+          currentAnnotation.w = nw;
+          currentAnnotation.h = nh;
         }
         renderAnnotations();
         return;
@@ -2037,7 +2101,7 @@
       nw = Math.max(10, nw);
       nh = Math.max(10, nh);
 
-      if (s.type === 'image' && s.aspect) {
+      if ((s.type === 'image' || s.type === 'move') && s.aspect) {
         const wFromH = nh * s.aspect;
         nw = (Math.abs(nw - s.w) >= Math.abs(wFromH - s.w)) ? nw : wFromH;
         nw = Math.max(20, nw);
@@ -2120,9 +2184,15 @@
           }
         }
 
+        if (currentAnnotation && currentAnnotation.type === 'move') {
+          if (currentAnnotation.w > 0 && currentAnnotation.h > 0) {
+            currentAnnotation.aspect = currentAnnotation.w / currentAnnotation.h;
+          }
+        }
+
         if (isDrawing && currentAnnotation) {
           const a = currentAnnotation;
-          if (a.type === 'rect' || a.type === 'hide') {
+          if (a.type === 'rect' || a.type === 'hide' || a.type === 'move') {
             discard = Math.abs(a.w) < 8 || Math.abs(a.h) < 8;
           } else if (a.type === 'arrow') {
             discard = Math.hypot(a.x2 - a.x1, a.y2 - a.y1) < 8;
@@ -2224,8 +2294,10 @@
           const w = localToWorld(a, p.x, p.y);
           handles.push({ id: p.id, x: w.x, y: w.y });
         });
-        const r = localToWorld(a, a.x + a.w / 2, a.y - off);
-        handles.push({ id: 'rot', x: r.x, y: r.y });
+        if (a.type !== 'move') {
+          const r = localToWorld(a, a.x + a.w / 2, a.y - off);
+          handles.push({ id: 'rot', x: r.x, y: r.y });
+        }
       } else if (a.type === 'text') {
         const topY = a.y - a.size / 2;
         const r = localToWorld(a, a.x, topY - off);
@@ -2259,7 +2331,6 @@
     // -------------------------------------------------------------
     // 描画
     // -------------------------------------------------------------
-    // 影を有効化（a.shadow > 0 のときのみ）
     function applyShadow(ctx, a) {
       if (a.shadow && a.shadow > 0) {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
@@ -2269,7 +2340,6 @@
       }
     }
 
-    // 影を明示的に無効化
     function clearShadow(ctx) {
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
@@ -2294,6 +2364,8 @@
           applyShadow(annoCtx, a);
           drawImageAnno(annoCtx, a);
           annoCtx.restore();
+        } else if (a.type === 'move') {
+          drawMove(annoCtx, a);
         }
 
         if (a.id === state.selectedId) {
@@ -2302,8 +2374,6 @@
       });
     }
 
-    // 四角：フチがあるときはフチにのみ影、本体には影なし。
-    // 　　　フチが無いときは本体に影。
     function drawRoundedRect(ctx, a) {
       withRotation(ctx, a, () => {
         const x0 = Math.min(a.x, a.x + a.w);
@@ -2321,7 +2391,6 @@
         const outline = a.outlineWidth != null ? a.outlineWidth : 0;
 
         if (outline > 0) {
-          // フチ（白）に影を付ける
           ctx.save();
           applyShadow(ctx, a);
           ctx.strokeStyle = '#ffffff';
@@ -2329,7 +2398,6 @@
           ctx.stroke();
           ctx.restore();
 
-          // 本体：影なし
           ctx.save();
           clearShadow(ctx);
           ctx.strokeStyle = a.color;
@@ -2337,7 +2405,6 @@
           ctx.stroke();
           ctx.restore();
         } else {
-          // フチなし：本体に影
           ctx.save();
           applyShadow(ctx, a);
           ctx.strokeStyle = a.color;
@@ -2348,8 +2415,6 @@
       });
     }
 
-    // 「隠す」: 生成済みの塗り画像を、回転クリップを通してAABBへ描画
-    // 角丸は廃止（常に r = 0）
     function drawHide(ctx, a) {
       const x0 = Math.min(a.x, a.x + a.w);
       const y0 = Math.min(a.y, a.y + a.h);
@@ -2386,920 +2451,3 @@
 
       ctx.restore();
     }
-
-    function drawImageAnno(ctx, a) {
-      const img = imageRegistry.get(a.srcKey);
-      if (!img) return;
-
-      withRotation(ctx, a, () => {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, a.x, a.y, a.w, a.h);
-      });
-    }
-
-    // 矢印：フチがあるときはフチにのみ影、本体には影なし。
-    // 　　　フチが無いときは本体に影。
-    function drawArrow(ctx, a) {
-      const angle = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
-      const headLen = a.arrowSize || 20;
-      const useEnds = a.arrowEnds === true;
-
-      const drawPath = () => {
-        ctx.beginPath();
-        if (useEnds) {
-          ctx.moveTo(a.x1, a.y1);
-          ctx.lineTo(a.x2, a.y2);
-
-          const perp = angle + Math.PI / 2;
-          const hx = Math.cos(perp) * headLen / 2;
-          const hy = Math.sin(perp) * headLen / 2;
-
-          ctx.moveTo(a.x1 - hx, a.y1 - hy);
-          ctx.lineTo(a.x1 + hx, a.y1 + hy);
-
-          ctx.moveTo(a.x2 - hx, a.y2 - hy);
-          ctx.lineTo(a.x2 + hx, a.y2 + hy);
-        } else {
-          ctx.moveTo(a.x1, a.y1);
-          ctx.lineTo(a.x2, a.y2);
-          ctx.lineTo(
-            a.x2 - headLen * Math.cos(angle - Math.PI / 6),
-            a.y2 - headLen * Math.sin(angle - Math.PI / 6)
-          );
-          ctx.moveTo(a.x2, a.y2);
-          ctx.lineTo(
-            a.x2 - headLen * Math.cos(angle + Math.PI / 6),
-            a.y2 - headLen * Math.sin(angle + Math.PI / 6)
-          );
-        }
-      };
-
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-
-      const outline = a.outlineWidth != null ? a.outlineWidth : 0;
-
-      if (outline > 0) {
-        // フチ（白）に影を付ける
-        ctx.save();
-        applyShadow(ctx, a);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = a.strokeWidth + outline * 2;
-        drawPath();
-        ctx.stroke();
-        ctx.restore();
-
-        // 本体：影なし
-        ctx.save();
-        clearShadow(ctx);
-        ctx.strokeStyle = a.color;
-        ctx.lineWidth = a.strokeWidth;
-        drawPath();
-        ctx.stroke();
-        ctx.restore();
-      } else {
-        // フチなし：本体に影
-        ctx.save();
-        applyShadow(ctx, a);
-        ctx.strokeStyle = a.color;
-        ctx.lineWidth = a.strokeWidth;
-        drawPath();
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
-    // 文字：フチがあるときはフチ（白）にのみ影、本体の塗りには影なし。
-    // 　　　フチが無いときは本体に影。
-    function drawText(ctx, a) {
-      withRotation(ctx, a, () => {
-        ctx.font = fontString(a);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.lineJoin = 'round';
-
-        const outline = (a.outlineWidth != null) ? a.outlineWidth : 0;
-
-        if (outline > 0) {
-          // フチ（白）に影
-          ctx.save();
-          applyShadow(ctx, a);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = outline * 2;
-          ctx.strokeText(a.text, a.x, a.y);
-          ctx.restore();
-
-          // 本体：影なし
-          ctx.save();
-          clearShadow(ctx);
-          ctx.fillStyle = a.color;
-          ctx.fillText(a.text, a.x, a.y);
-          ctx.restore();
-        } else {
-          // フチなし：本体に影
-          ctx.save();
-          applyShadow(ctx, a);
-          ctx.fillStyle = a.color;
-          ctx.fillText(a.text, a.x, a.y);
-          ctx.restore();
-        }
-      });
-    }
-
-    function drawSelectionBounds(a) {
-      annoCtx.save();
-      annoCtx.strokeStyle = '#0a84ff';
-      annoCtx.lineWidth = 2 / state.scale;
-      annoCtx.fillStyle = '#ffffff';
-      annoCtx.setLineDash([]);
-
-      const handleR = 7 / state.scale;
-
-      if (isBoxType(a.type)) {
-        withRotation(annoCtx, a, () => {
-          annoCtx.strokeRect(a.x, a.y, a.w, a.h);
-        });
-      } else if (a.type === 'text') {
-        const m = measureTextAnno(a);
-        withRotation(annoCtx, a, () => {
-          annoCtx.strokeRect(a.x - m.w / 2 - 4, a.y - a.size / 2 - 4, m.w + 8, a.size + 8);
-        });
-      }
-
-      const handles = getHandles(a);
-      handles.forEach(h => {
-        if (h.id === 'rot') {
-          let base;
-          if (isBoxType(a.type)) {
-            base = localToWorld(a, a.x + a.w / 2, a.y);
-          } else {
-            base = localToWorld(a, a.x, a.y - a.size / 2);
-          }
-
-          annoCtx.beginPath();
-          annoCtx.moveTo(base.x, base.y);
-          annoCtx.lineTo(h.x, h.y);
-          annoCtx.strokeStyle = '#0a84ff';
-          annoCtx.lineWidth = 2 / state.scale;
-          annoCtx.stroke();
-
-          annoCtx.beginPath();
-          annoCtx.arc(h.x, h.y, handleR + 2 / state.scale, 0, Math.PI * 2);
-          annoCtx.fillStyle = '#0a84ff';
-          annoCtx.fill();
-          annoCtx.strokeStyle = '#ffffff';
-          annoCtx.lineWidth = 2 / state.scale;
-          annoCtx.stroke();
-
-          annoCtx.beginPath();
-          annoCtx.arc(h.x, h.y, handleR * 0.45, 0.4, Math.PI * 1.6);
-          annoCtx.strokeStyle = '#ffffff';
-          annoCtx.lineWidth = 1.6 / state.scale;
-          annoCtx.stroke();
-        } else {
-          annoCtx.beginPath();
-          annoCtx.arc(h.x, h.y, handleR, 0, Math.PI * 2);
-          annoCtx.fillStyle = '#ffffff';
-          annoCtx.fill();
-          annoCtx.strokeStyle = '#0a84ff';
-          annoCtx.lineWidth = 2 / state.scale;
-          annoCtx.stroke();
-        }
-      });
-
-      annoCtx.restore();
-    }
-
-    // -------------------------------------------------------------
-    // UI 同期
-    // -------------------------------------------------------------
-    function updateUI() {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-
-      if (!a) {
-        propertiesPanel.classList.add('hidden');
-        return;
-      }
-
-      propertiesPanel.classList.remove('hidden');
-
-      const hideColorCol = (a.type === 'hide' || a.type === 'image');
-      colorColumn.style.display = hideColorCol ? 'none' : 'flex';
-      propertiesPanel.style.gridTemplateColumns = hideColorCol
-        ? 'auto auto 1fr'
-        : 'auto auto auto 1fr';
-
-      renderColorPalette();
-
-      document.querySelectorAll('.color-swatch').forEach(s => {
-        if (s.dataset.color && s.dataset.color.toLowerCase() === (a.color || '').toLowerCase()) {
-          s.classList.add('selected');
-        } else {
-          s.classList.remove('selected');
-        }
-      });
-
-      document.getElementById('font-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
-      document.getElementById('text-prop-row').style.display = (a.type === 'text') ? 'flex' : 'none';
-      document.getElementById('radius-prop-row').style.display =
-        (a.type === 'rect') ? 'flex' : 'none';
-      document.getElementById('arrow-prop-row').style.display = (a.type === 'arrow') ? 'flex' : 'none';
-      document.getElementById('size-prop-row').style.display =
-        (a.type === 'hide' || a.type === 'image') ? 'none' : 'flex';
-      document.getElementById('shadow-prop-row').style.display =
-        (a.type === 'hide') ? 'none' : 'flex';
-      document.getElementById('image-prop-row').style.display =
-        (a.type === 'image') ? 'flex' : 'none';
-
-      if (a.type === 'text') {
-        textContentInput.value = a.text;
-        btnBold.classList.toggle('active', !!a.isBold);
-        sizeLabel.textContent = 'サイズ';
-        setSliderRange(sizeSlider, state.ranges.textSize, a.size);
-        fontSelect.value = a.fontFamily || state.defaults.fontFamily;
-      } else if (a.type === 'rect' || a.type === 'arrow') {
-        sizeLabel.textContent = '線幅';
-        setSliderRange(sizeSlider, state.ranges.strokeWidth, a.strokeWidth);
-      }
-
-      setSliderRange(outlineSlider, state.ranges.outlineWidth, a.outlineWidth != null ? a.outlineWidth : 0);
-      setSliderRange(shadowSlider, state.ranges.shadow, a.shadow != null ? a.shadow : 0);
-
-      if (a.type === 'rect') {
-        radiusSlider.value = (a.borderRadius != null) ? a.borderRadius : 0;
-      }
-
-      if (a.type === 'arrow') {
-        setSliderRange(arrowSlider, state.ranges.arrowSize, a.arrowSize || state.ranges.arrowSize.min);
-        btnArrowEnds.classList.toggle('active', !!a.arrowEnds);
-      }
-
-      if (a.type === 'image') {
-        btnBgConnected.classList.toggle('active', state.bgRemoveConnected);
-      }
-    }
-
-    function switchTool(tool) {
-      state.activeTool = tool;
-      document.querySelectorAll('.tool-item[data-tool]').forEach(b => {
-        b.classList.toggle('active', b.dataset.tool === tool);
-      });
-    }
-
-    function selectColor(color) {
-      state.defaults.color = color;
-      const selectedAnno = state.annotations.find(a => a.id === state.selectedId);
-      if (selectedAnno && selectedAnno.type !== 'image') {
-        selectedAnno.color = color;
-        saveHistory();
-        renderAnnotations();
-      }
-      updateUI();
-    }
-
-    // -------------------------------------------------------------
-    // 背景削除
-    // -------------------------------------------------------------
-    function removeImageBackground(anno, connectedOnly) {
-      const img = imageRegistry.get(anno.srcKey);
-      if (!img) return false;
-
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
-      if (!iw || !ih) return false;
-
-      const cnv = document.createElement('canvas');
-      cnv.width = iw;
-      cnv.height = ih;
-      const ctx = cnv.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-
-      let imageData;
-      try {
-        imageData = ctx.getImageData(0, 0, iw, ih);
-      } catch (e) {
-        return false;
-      }
-
-      const data = imageData.data;
-
-      const samplePatch = (cx, cy) => {
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            const x = clampI(cx + dx, 0, iw - 1);
-            const y = clampI(cy + dy, 0, ih - 1);
-            const idx = (y * iw + x) * 4;
-            if (data[idx + 3] < 128) continue;
-            r += data[idx];
-            g += data[idx + 1];
-            b += data[idx + 2];
-            n++;
-          }
-        }
-        if (n === 0) return null;
-        return [r / n, g / n, b / n];
-      };
-
-      const patches = [
-        samplePatch(2, 2),
-        samplePatch(iw - 3, 2),
-        samplePatch(2, ih - 3),
-        samplePatch(iw - 3, ih - 3)
-      ].filter(Boolean);
-
-      if (patches.length === 0) return false;
-
-      let bgR = 0, bgG = 0, bgB = 0;
-      for (const p of patches) { bgR += p[0]; bgG += p[1]; bgB += p[2]; }
-      bgR /= patches.length;
-      bgG /= patches.length;
-      bgB /= patches.length;
-
-      const isLightBg = ((bgR + bgG + bgB) / 3) > 200;
-      const lowThreshold = isLightBg ? 15 : 25;
-      const highThreshold = isLightBg ? 60 : 90;
-      const connectThreshold = lowThreshold + (highThreshold - lowThreshold) * 0.4;
-
-      const computeAlpha = (dist) => {
-        if (dist <= lowThreshold) return 0;
-        if (dist >= highThreshold) return 255;
-        const t = (dist - lowThreshold) / (highThreshold - lowThreshold);
-        const s = t * t * (3 - 2 * t);
-        return Math.round(255 * s);
-      };
-
-      if (connectedOnly) {
-        const visited = new Uint8Array(iw * ih);
-        const queue = [];
-
-        const isConnectable = (idx) => {
-          const dr = data[idx] - bgR;
-          const dg = data[idx + 1] - bgG;
-          const db = data[idx + 2] - bgB;
-          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-          return dist <= connectThreshold;
-        };
-
-        for (let x = 0; x < iw; x++) {
-          for (const y of [0, ih - 1]) {
-            const p = y * iw + x;
-            if (!visited[p] && data[p * 4 + 3] > 0 && isConnectable(p * 4)) {
-              visited[p] = 1;
-              queue.push(p);
-            }
-          }
-        }
-        for (let y = 1; y < ih - 1; y++) {
-          for (const x of [0, iw - 1]) {
-            const p = y * iw + x;
-            if (!visited[p] && data[p * 4 + 3] > 0 && isConnectable(p * 4)) {
-              visited[p] = 1;
-              queue.push(p);
-            }
-          }
-        }
-
-        let head = 0;
-        while (head < queue.length) {
-          const p = queue[head++];
-          const x = p % iw;
-          const y = (p / iw) | 0;
-
-          if (x > 0) {
-            const np = p - 1;
-            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
-              visited[np] = 1; queue.push(np);
-            }
-          }
-          if (x < iw - 1) {
-            const np = p + 1;
-            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
-              visited[np] = 1; queue.push(np);
-            }
-          }
-          if (y > 0) {
-            const np = p - iw;
-            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
-              visited[np] = 1; queue.push(np);
-            }
-          }
-          if (y < ih - 1) {
-            const np = p + iw;
-            if (!visited[np] && data[np * 4 + 3] > 0 && isConnectable(np * 4)) {
-              visited[np] = 1; queue.push(np);
-            }
-          }
-        }
-
-        for (let p = 0; p < visited.length; p++) {
-          if (!visited[p]) continue;
-          const idx = p * 4;
-          const a0 = data[idx + 3];
-          if (a0 === 0) continue;
-
-          const dr = data[idx] - bgR;
-          const dg = data[idx + 1] - bgG;
-          const db = data[idx + 2] - bgB;
-          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-          const newAlpha = computeAlpha(dist);
-          data[idx + 3] = Math.round(a0 * newAlpha / 255);
-        }
-      } else {
-        for (let i = 0; i < data.length; i += 4) {
-          const a0 = data[i + 3];
-          if (a0 === 0) continue;
-
-          const dr = data[i] - bgR;
-          const dg = data[i + 1] - bgG;
-          const db = data[i + 2] - bgB;
-          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-          const newAlpha = computeAlpha(dist);
-          data[i + 3] = Math.round(a0 * newAlpha / 255);
-        }
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-
-      const newKey = 'img_' + (++imageKeyCounter);
-      const newImg = new Image();
-      newImg.onload = () => {
-        imageRegistry.set(newKey, newImg);
-        anno.srcKey = newKey;
-        renderAnnotations();
-        saveHistory();
-      };
-      newImg.src = cnv.toDataURL('image/png');
-
-      return true;
-    }
-
-    btnBgRemove.addEventListener('click', () => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a || a.type !== 'image') return;
-      btnBgRemove.disabled = true;
-      const ok = removeImageBackground(a, state.bgRemoveConnected);
-      setTimeout(() => { btnBgRemove.disabled = false; }, 400);
-      if (!ok) btnBgRemove.disabled = false;
-    });
-
-    btnBgConnected.addEventListener('click', () => {
-      state.bgRemoveConnected = !state.bgRemoveConnected;
-      btnBgConnected.classList.toggle('active', state.bgRemoveConnected);
-    });
-
-    // -------------------------------------------------------------
-    // 複製
-    // -------------------------------------------------------------
-    function duplicateSelected() {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-
-      const newAnno = JSON.parse(JSON.stringify(a));
-      newAnno.id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
-
-      const offset = Math.max(10, 24 / state.scale);
-      if (isBoxType(newAnno.type) || newAnno.type === 'text') {
-        newAnno.x += offset;
-        newAnno.y += offset;
-      } else if (newAnno.type === 'arrow') {
-        newAnno.x1 += offset;
-        newAnno.y1 += offset;
-        newAnno.x2 += offset;
-        newAnno.y2 += offset;
-      }
-
-      state.annotations.push(newAnno);
-      state.selectedId = newAnno.id;
-      bringToFront(newAnno.id);
-      updateUI();
-      renderAnnotations();
-      saveHistory();
-    }
-
-    btnDuplicate.addEventListener('click', duplicateSelected);
-
-    // -------------------------------------------------------------
-    // プロパティ操作
-    // -------------------------------------------------------------
-    textContentInput.addEventListener('input', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'text') {
-        a.text = e.target.value;
-        renderAnnotations();
-      }
-    });
-    textContentInput.addEventListener('change', () => saveHistory());
-
-    btnClearText.addEventListener('click', () => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'text') {
-        a.text = '';
-        textContentInput.value = '';
-        textContentInput.focus();
-        renderAnnotations();
-        saveHistory();
-      }
-    });
-
-    btnBold.addEventListener('click', () => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'text') {
-        a.isBold = !a.isBold;
-        state.defaults.isBold = a.isBold;
-        updateUI();
-        saveHistory();
-        renderAnnotations();
-      }
-    });
-
-    fontSelect.addEventListener('change', (e) => {
-      const val = e.target.value;
-      state.defaults.fontFamily = val;
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'text') {
-        a.fontFamily = val;
-        saveHistory();
-        renderAnnotations();
-      }
-    });
-
-    sizeSlider.addEventListener('input', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-      const val = Number(e.target.value);
-      if (a.type === 'text') {
-        a.size = val;
-      } else if (a.type !== 'hide' && a.type !== 'image') {
-        a.strokeWidth = val;
-      }
-      renderAnnotations();
-    });
-    sizeSlider.addEventListener('change', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-      const val = Number(e.target.value);
-      if (a.type === 'text') state.defaults.textSize = val;
-      else if (a.type !== 'hide' && a.type !== 'image') state.defaults.strokeWidth = val;
-      saveHistory();
-    });
-
-    outlineSlider.addEventListener('input', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-      a.outlineWidth = Number(e.target.value);
-      state.defaults.outlineWidth = a.outlineWidth;
-      renderAnnotations();
-    });
-    outlineSlider.addEventListener('change', () => saveHistory());
-
-    shadowSlider.addEventListener('input', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-      a.shadow = Number(e.target.value);
-      state.defaults.shadow = a.shadow;
-      renderAnnotations();
-    });
-    shadowSlider.addEventListener('change', () => saveHistory());
-
-    radiusSlider.addEventListener('input', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'rect') {
-        a.borderRadius = Number(e.target.value);
-        state.defaults.borderRadius = a.borderRadius;
-        renderAnnotations();
-      }
-    });
-    radiusSlider.addEventListener('change', () => saveHistory());
-
-    arrowSlider.addEventListener('input', (e) => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'arrow') {
-        a.arrowSize = Number(e.target.value);
-        state.defaults.arrowSize = a.arrowSize;
-        renderAnnotations();
-      }
-    });
-    arrowSlider.addEventListener('change', () => saveHistory());
-
-    btnArrowEnds.addEventListener('click', () => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && a.type === 'arrow') {
-        a.arrowEnds = !a.arrowEnds;
-        state.defaults.arrowEnds = a.arrowEnds;
-        updateUI();
-        renderAnnotations();
-        saveHistory();
-      }
-    });
-
-    btnAspectSquare.addEventListener('click', () => {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (a && (a.type === 'rect' || a.type === 'hide')) {
-        const minSide = Math.min(Math.abs(a.w), Math.abs(a.h));
-        const cx = a.x + a.w / 2;
-        const cy = a.y + a.h / 2;
-        const signW = a.w < 0 ? -1 : 1;
-        const signH = a.h < 0 ? -1 : 1;
-        a.w = minSide * signW;
-        a.h = minSide * signH;
-        a.x = cx - a.w / 2;
-        a.y = cy - a.h / 2;
-        saveHistory();
-        renderAnnotations();
-      }
-    });
-
-    // -------------------------------------------------------------
-    // 微調整ボタン
-    // -------------------------------------------------------------
-    function applyNudge(dx, dy) {
-      const a = state.annotations.find(x => x.id === state.selectedId);
-      if (!a) return;
-      if (isBoxType(a.type) || a.type === 'text') {
-        a.x += dx;
-        a.y += dy;
-      } else if (a.type === 'arrow') {
-        a.x1 += dx;
-        a.y1 += dy;
-        a.x2 += dx;
-        a.y2 += dy;
-      }
-      renderAnnotations();
-    }
-
-    function setupNudgeButtons() {
-      const defs = [
-        { id: 'nudge-left', dx: -2, dy: 0 },
-        { id: 'nudge-right', dx: 2, dy: 0 },
-        { id: 'nudge-up', dx: 0, dy: -2 },
-        { id: 'nudge-down', dx: 0, dy: 2 }
-      ];
-
-      defs.forEach(({ id, dx, dy }) => {
-        const btn = document.getElementById(id);
-        let holdTimer = null;
-        let repeatTimer = null;
-        let active = false;
-
-        const stop = () => {
-          if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-          if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
-          if (active) {
-            active = false;
-            saveHistory();
-          }
-        };
-
-        btn.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          if (!state.selectedId) return;
-          active = true;
-          applyNudge(dx, dy);
-          holdTimer = setTimeout(() => {
-            repeatTimer = setInterval(() => applyNudge(dx, dy), 55);
-          }, 380);
-        });
-        btn.addEventListener('pointerup', stop);
-        btn.addEventListener('pointercancel', stop);
-        btn.addEventListener('pointerleave', stop);
-      });
-    }
-
-    btnDelete.addEventListener('click', () => {
-      if (state.selectedId) {
-        state.annotations = state.annotations.filter(a => a.id !== state.selectedId);
-        state.selectedId = null;
-        updateUI();
-        saveHistory();
-        renderAnnotations();
-      }
-    });
-
-    // -------------------------------------------------------------
-    // エクスポート / 共有 / コピー
-    // -------------------------------------------------------------
-    let previewObjectURL = null;
-    let previewBlob = null;
-
-    function releasePreviewObjectURL() {
-      if (previewObjectURL) {
-        try { URL.revokeObjectURL(previewObjectURL); } catch (e) {}
-        previewObjectURL = null;
-      }
-    }
-
-    function updateSaveInfo(editedBytes) {
-      saveInfoDim.textContent = state.imgWidth + ' × ' + state.imgHeight + ' px';
-      saveInfoOrig.textContent =
-        formatSize(state.originalFileSize) + ' (' + formatMime(state.originalFileType) + ')';
-      saveInfoEdited.textContent =
-        formatSize(editedBytes) + ' (PNG)';
-    }
-
-    function showSavePreview(url, blob, editedBytes) {
-      previewBlob = blob || null;
-      previewObjectURL = blob ? url : null;
-
-      updateSaveInfo(editedBytes || 0);
-
-      let revealed = false;
-      const reveal = () => {
-        if (revealed) return;
-        revealed = true;
-        savePreview.onload = null;
-        savePreview.onerror = null;
-        saveModal.classList.add('active');
-      };
-
-      savePreview.onload = reveal;
-      savePreview.onerror = reveal;
-      savePreview.src = url;
-
-      setTimeout(reveal, 1200);
-    }
-
-    function buildExportCanvas() {
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = state.imgWidth;
-      exportCanvas.height = state.imgHeight;
-      const exportCtx = exportCanvas.getContext('2d');
-
-      exportCtx.drawImage(state.image, 0, 0);
-
-      state.annotations.forEach(a => {
-        if (a.type === 'rect') {
-          drawRoundedRect(exportCtx, a);
-        } else if (a.type === 'hide') {
-          drawHide(exportCtx, a);
-        } else if (a.type === 'arrow') {
-          drawArrow(exportCtx, a);
-        } else if (a.type === 'text') {
-          drawText(exportCtx, a);
-        } else if (a.type === 'image') {
-          exportCtx.save();
-          applyShadow(exportCtx, a);
-          drawImageAnno(exportCtx, a);
-          exportCtx.restore();
-        }
-      });
-
-      return exportCanvas;
-    }
-
-    function canvasToBlob(canvas) {
-      return new Promise((resolve) => {
-        if (typeof canvas.toBlob === 'function') {
-          canvas.toBlob((b) => resolve(b), 'image/png');
-        } else {
-          try {
-            const dataURL = canvas.toDataURL('image/png');
-            const bin = atob(dataURL.split(',')[1]);
-            const len = bin.length;
-            const buf = new Uint8Array(len);
-            for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i);
-            resolve(new Blob([buf], { type: 'image/png' }));
-          } catch (e) {
-            resolve(null);
-          }
-        }
-      });
-    }
-
-    btnExport.addEventListener('click', () => {
-      if (!state.image) return;
-
-      const exportCanvas = buildExportCanvas();
-
-      releasePreviewObjectURL();
-
-      canvasToBlob(exportCanvas).then((blob) => {
-        if (blob) {
-          showSavePreview(URL.createObjectURL(blob), blob, blob.size);
-        } else {
-          const dataURL = exportCanvas.toDataURL('image/png');
-          const comma = dataURL.indexOf(',');
-          const b64 = comma >= 0 ? dataURL.length - comma - 1 : 0;
-          const approxBytes = Math.round(b64 * 3 / 4);
-          showSavePreview(dataURL, null, approxBytes);
-        }
-      });
-    });
-
-    // -------------------------------------------------------------
-    // Web Share API で PNG ファイルを共有
-    // -------------------------------------------------------------
-    async function shareExportImage() {
-      if (!state.image) return;
-
-      const exportCanvas = buildExportCanvas();
-      const blob = await canvasToBlob(exportCanvas);
-
-      if (!blob) {
-        alert('画像の生成に失敗しました。');
-        return;
-      }
-
-      const fileName = 'cocomark_' + Date.now() + '.png';
-      let file;
-      try {
-        file = new File([blob], fileName, { type: 'image/png' });
-      } catch (e) {
-        file = blob;
-        file.name = fileName;
-      }
-
-      if (navigator.canShare && navigator.share) {
-        try {
-          if (navigator.canShare({ files: [file] })) {
-            btnShareImage.disabled = true;
-            await navigator.share({
-              files: [file],
-              title: 'ココマーク',
-              text: 'ココマークで作成した画像'
-            });
-            return;
-          }
-        } catch (err) {
-          if (err && err.name === 'AbortError') return;
-        } finally {
-          btnShareImage.disabled = false;
-        }
-      }
-
-      try {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 1000);
-      } catch (e) {
-        alert('この端末では共有機能が利用できません。画像を長押しして保存してください。');
-      }
-    }
-
-    btnShareImage.addEventListener('click', shareExportImage);
-
-    // -------------------------------------------------------------
-    // クリップボードへコピー
-    // -------------------------------------------------------------
-    async function copyExportImage() {
-      if (!state.image) return;
-
-      let blob = previewBlob;
-      if (!blob) {
-        const exportCanvas = buildExportCanvas();
-        blob = await canvasToBlob(exportCanvas);
-      }
-
-      if (!blob) {
-        alert('画像の生成に失敗しました。');
-        return;
-      }
-
-      if (!navigator.clipboard || !window.ClipboardItem) {
-        alert('この端末ではコピーが利用できません。');
-        return;
-      }
-
-      try {
-        btnCopyImage.disabled = true;
-        await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': blob })
-        ]);
-        const orig = btnCopyImage.textContent;
-        btnCopyImage.textContent = 'コピー完了';
-        setTimeout(() => { btnCopyImage.textContent = orig; }, 1500);
-      } catch (err) {
-        alert('コピーに失敗しました。画像を長押しして保存してください。');
-      } finally {
-        btnCopyImage.disabled = false;
-      }
-    }
-
-    btnCopyImage.addEventListener('click', copyExportImage);
-
-    // -------------------------------------------------------------
-    // モーダルの外側タップで閉じる
-    // -------------------------------------------------------------
-    saveModal.addEventListener('click', (e) => {
-      if (e.target === saveModal) {
-        saveModal.classList.remove('active');
-      }
-    });
-
-    window.addEventListener('pagehide', () => {
-      releasePreviewObjectURL();
-    });
-
-    init();
-  </script>
-</body>
-</html>
