@@ -102,6 +102,11 @@
       font-weight: 600;
     }
 
+    #btn-grid.active {
+      color: #34c759;
+      background: rgba(52, 199, 89, 0.18);
+    }
+
     #editor-container {
       flex: 1;
       position: relative;
@@ -445,6 +450,24 @@
       background: rgba(10, 132, 255, 0.6);
     }
 
+    .btn-icon-confirm {
+      background: rgba(52, 199, 89, 0.35);
+      color: #34c759;
+      border: 1px solid rgba(52, 199, 89, 0.55);
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .btn-icon-confirm:active {
+      background: rgba(52, 199, 89, 0.65);
+    }
+
     #btn-bg-remove {
       flex: 1;
       padding: 4px 8px;
@@ -662,6 +685,12 @@
     </div>
     <h1>ココマーク</h1>
     <div style="display: flex; gap: 4px; align-items: center;">
+      <button id="btn-grid" class="btn-icon" title="グリッド線">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="3" width="18" height="18" rx="1"/>
+          <path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+        </svg>
+      </button>
       <button id="btn-new" class="btn-icon">新規</button>
       <button id="btn-export" class="btn-icon btn-primary">保存</button>
     </div>
@@ -687,6 +716,11 @@
       </button>
       <button class="btn-icon-dup" id="btn-duplicate" title="複製">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+      </button>
+      <button class="btn-icon-confirm" id="btn-confirm" title="確定して背景に焼き付ける">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 13l4 4L19 7"/>
+        </svg>
       </button>
     </div>
 
@@ -847,6 +881,7 @@
       panY: 0,
       activeTool: 'select',
       annotations: [],
+      confirmed: [],
       selectedId: null,
       history: [],
       historyIndex: -1,
@@ -854,11 +889,12 @@
       bgRemoveConnected: true,
       originalFileSize: 0,
       originalFileType: '',
+      gridVisible: false,
       ranges: {
         textSize:     { min: 8,  max: 200, step: 1 },
         strokeWidth:  { min: 1,  max: 40,  step: 1 },
         outlineWidth: { min: 0,  max: 20,  step: 1 },
-        arrowSize:    { min: 5,  max: 100, step: 1 },
+        arrowSize:    { min: 0,  max: 100, step: 1 },
         shadow:       { min: 0,  max: 40,  step: 1 }
       },
       defaults: {
@@ -897,6 +933,8 @@
     const btnExport = document.getElementById('btn-export');
     const btnDelete = document.getElementById('btn-delete');
     const btnDuplicate = document.getElementById('btn-duplicate');
+    const btnConfirm = document.getElementById('btn-confirm');
+    const btnGrid = document.getElementById('btn-grid');
     const colorGridContainer = document.getElementById('color-grid');
     const textContentInput = document.getElementById('text-content-input');
     const btnClearText = document.getElementById('btn-clear-text');
@@ -925,8 +963,8 @@
     const measureCtx = document.createElement('canvas').getContext('2d');
 
     let srcPixels = null;
-    const hideFillCache = new WeakMap();
-    const moveHoleCache = new WeakMap();
+    let hideFillCache = new WeakMap();
+    let moveHoleCache = new WeakMap();
 
     const imageRegistry = new Map();
     let imageKeyCounter = 0;
@@ -1016,6 +1054,14 @@
       return map[sub] || sub.toUpperCase();
     }
 
+    function isPointInRect(p, x, y, w, h) {
+      const minX = Math.min(x, x + w);
+      const maxX = Math.max(x, x + w);
+      const minY = Math.min(y, y + h);
+      const maxY = Math.max(y, y + h);
+      return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+    }
+
     // -------------------------------------------------------------
     // 画像サイズに応じたスライダー範囲
     // -------------------------------------------------------------
@@ -1040,7 +1086,7 @@
           step: 1
         },
         arrowSize: {
-          min: Math.max(5, Math.round(ref * 0.01)),
+          min: 0,
           max: Math.max(20, Math.round(ref * 0.15)),
           step: 1
         },
@@ -1164,6 +1210,7 @@
       setupFontSelect();
       setupDragAndDrop();
       setupPasteHandler();
+      setupKeyboard();
 
       document.querySelectorAll('.tool-item[data-tool]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1199,6 +1246,99 @@
     }
 
     // -------------------------------------------------------------
+    // キーボード操作
+    // -------------------------------------------------------------
+    let arrowNudgeTimer = null;
+    function scheduleArrowNudgeHistory() {
+      if (arrowNudgeTimer) clearTimeout(arrowNudgeTimer);
+      arrowNudgeTimer = setTimeout(() => {
+        arrowNudgeTimer = null;
+        saveHistory();
+      }, 350);
+    }
+
+    function setupKeyboard() {
+      document.addEventListener('keydown', (e) => {
+        if (!state.image) return;
+
+        const ae = document.activeElement;
+        const tag = ae ? ae.tagName : '';
+        const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+                          (ae && ae.isContentEditable);
+
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key;
+        const lower = (key && key.length === 1) ? key.toLowerCase() : key;
+
+        // Escape: 編集キャンセル／選択解除
+        if (key === 'Escape') {
+          if (isDrawing || isDraggingObj || isTransformingObj || isPanning) {
+            cancelActiveGesture();
+            updateUI();
+            renderAnnotations();
+            return;
+          }
+          if (isEditing && ae && typeof ae.blur === 'function') ae.blur();
+          if (state.selectedId) {
+            state.selectedId = null;
+            updateUI();
+            renderAnnotations();
+          }
+          return;
+        }
+
+        if (isEditing) return;
+
+        // Undo
+        if (mod && lower === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+          return;
+        }
+        // Redo
+        if (mod && ((lower === 'z' && e.shiftKey) || lower === 'y')) {
+          e.preventDefault();
+          redo();
+          return;
+        }
+        // Duplicate
+        if (mod && lower === 'd') {
+          e.preventDefault();
+          duplicateSelected();
+          return;
+        }
+        // Delete
+        if (key === 'Delete' || key === 'Backspace') {
+          if (state.selectedId) {
+            e.preventDefault();
+            deleteSelected();
+          }
+          return;
+        }
+        // Arrow keys
+        if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown') {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1;
+          let dx = 0, dy = 0;
+          if (key === 'ArrowLeft') dx = -step;
+          if (key === 'ArrowRight') dx = step;
+          if (key === 'ArrowUp') dy = -step;
+          if (key === 'ArrowDown') dy = step;
+
+          if (state.selectedId && state.annotations.some(x => x.id === state.selectedId)) {
+            applyNudge(dx, dy);
+            scheduleArrowNudgeHistory();
+          } else {
+            // 何も選択されていない場合はビューをパン
+            state.panX += dx * state.scale;
+            state.panY += dy * state.scale;
+            updateViewportTransform();
+          }
+        }
+      });
+    }
+
+    // -------------------------------------------------------------
     // 画像読み込み
     // -------------------------------------------------------------
     function loadImageFile(file) {
@@ -1223,11 +1363,14 @@
           bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
           bgCtx.drawImage(img, 0, 0);
 
+          hideFillCache = new WeakMap();
+          moveHoleCache = new WeakMap();
           cacheSourcePixels();
           updateSliderRanges();
 
           startScreen.style.display = 'none';
           state.annotations = [];
+          state.confirmed = [];
           state.selectedId = null;
           state.history = [];
           state.historyIndex = -1;
@@ -1313,7 +1456,7 @@
     }
 
     // -------------------------------------------------------------
-    // ペースト（Ctrl+V / ペーストメニュー）
+    // ペースト
     // -------------------------------------------------------------
     function setupPasteHandler() {
       const handlePaste = (e) => {
@@ -1442,14 +1585,70 @@
     }
 
     // -------------------------------------------------------------
-    // 元画像キャッシュ
+    // 背景キャンバス（元画像＋確定オブジェクト）を再構築
+    // -------------------------------------------------------------
+    function redrawBackground() {
+      if (!state.image) return;
+      const w = bgCanvas.width;
+      const h = bgCanvas.height;
+      if (!w || !h) return;
+
+      bgCtx.clearRect(0, 0, w, h);
+      bgCtx.drawImage(state.image, 0, 0);
+
+      state.confirmed.forEach(a => {
+        if (a.type === 'move') {
+          // 自己参照を避けるため、内容を先にスナップショット
+          const srcW = Math.abs(a.srcW);
+          const srcH = Math.abs(a.srcH);
+          if (srcW < 0.5 || srcH < 0.5) return;
+          const snap = document.createElement('canvas');
+          snap.width = Math.max(1, Math.round(srcW));
+          snap.height = Math.max(1, Math.round(srcH));
+          snap.getContext('2d').drawImage(
+            bgCanvas,
+            a.srcX, a.srcY, srcW, srcH,
+            0, 0, snap.width, snap.height
+          );
+
+          drawMoveHole(bgCtx, a);
+
+          const dw = Math.abs(a.w);
+          const dh = Math.abs(a.h);
+          bgCtx.save();
+          applyShadow(bgCtx, a);
+          bgCtx.imageSmoothingEnabled = true;
+          bgCtx.imageSmoothingQuality = 'high';
+          bgCtx.drawImage(snap, 0, 0, snap.width, snap.height, a.x, a.y, dw, dh);
+          bgCtx.restore();
+        } else if (a.type === 'rect') {
+          drawRoundedRect(bgCtx, a);
+        } else if (a.type === 'hide') {
+          drawHide(bgCtx, a);
+        } else if (a.type === 'arrow') {
+          drawArrow(bgCtx, a);
+        } else if (a.type === 'text') {
+          drawText(bgCtx, a);
+        } else if (a.type === 'image') {
+          bgCtx.save();
+          applyShadow(bgCtx, a);
+          drawImageAnno(bgCtx, a);
+          bgCtx.restore();
+        }
+      });
+
+      cacheSourcePixels();
+    }
+
+    // -------------------------------------------------------------
+    // 元画像キャッシュ（背景キャンバス基準）
     // -------------------------------------------------------------
     function cacheSourcePixels() {
       srcPixels = null;
-      if (!state.image) return;
+      if (!bgCanvas.width || !bgCanvas.height) return;
 
-      const iw = state.imgWidth;
-      const ih = state.imgHeight;
+      const iw = bgCanvas.width;
+      const ih = bgCanvas.height;
       if (!iw || !ih) return;
 
       const sc = Math.min(1, SOURCE_SAMPLE_MAX / Math.max(iw, ih));
@@ -1460,7 +1659,7 @@
       c.width = w;
       c.height = h;
       const cx = c.getContext('2d', { willReadFrequently: true });
-      cx.drawImage(state.image, 0, 0, w, h);
+      cx.drawImage(bgCanvas, 0, 0, w, h);
 
       try {
         const img = cx.getImageData(0, 0, w, h);
@@ -1625,7 +1824,6 @@
       return canvas;
     }
 
-    // 「移動」ツール用：切り取り元の穴埋め画像（キャッシュ付き）
     function getMoveHoleFill(a) {
       const key = [
         Math.round(a.srcX),
@@ -1705,7 +1903,10 @@
     // -------------------------------------------------------------
     function saveHistory() {
       state.history = state.history.slice(0, state.historyIndex + 1);
-      state.history.push(JSON.stringify(state.annotations));
+      state.history.push(JSON.stringify({
+        annotations: state.annotations,
+        confirmed: state.confirmed
+      }));
       state.historyIndex++;
       updateUndoRedoButtons();
     }
@@ -1713,8 +1914,11 @@
     function undo() {
       if (state.historyIndex > 0) {
         state.historyIndex--;
-        state.annotations = JSON.parse(state.history[state.historyIndex]);
+        const snap = JSON.parse(state.history[state.historyIndex]);
+        state.annotations = snap.annotations || [];
+        state.confirmed = snap.confirmed || [];
         state.selectedId = null;
+        redrawBackground();
         updateUI();
         renderAnnotations();
         updateUndoRedoButtons();
@@ -1724,8 +1928,11 @@
     function redo() {
       if (state.historyIndex < state.history.length - 1) {
         state.historyIndex++;
-        state.annotations = JSON.parse(state.history[state.historyIndex]);
+        const snap = JSON.parse(state.history[state.historyIndex]);
+        state.annotations = snap.annotations || [];
+        state.confirmed = snap.confirmed || [];
         state.selectedId = null;
+        redrawBackground();
         updateUI();
         renderAnnotations();
         updateUndoRedoButtons();
@@ -1739,6 +1946,32 @@
 
     btnUndo.addEventListener('click', undo);
     btnRedo.addEventListener('click', redo);
+
+    // -------------------------------------------------------------
+    // グリッド・確定ボタン
+    // -------------------------------------------------------------
+    btnGrid.addEventListener('click', () => {
+      state.gridVisible = !state.gridVisible;
+      btnGrid.classList.toggle('active', state.gridVisible);
+      renderAnnotations();
+    });
+
+    btnConfirm.addEventListener('click', () => {
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (!a) return;
+
+      // 非確定リストから外し、確定リストへ移す
+      state.annotations = state.annotations.filter(x => x.id !== a.id);
+      state.confirmed.push(a);
+      state.selectedId = null;
+
+      // 背景キャンバスを再構築して焼き付け
+      redrawBackground();
+
+      updateUI();
+      renderAnnotations();
+      saveHistory();
+    });
 
     // -------------------------------------------------------------
     // ポインター
@@ -1822,6 +2055,7 @@
       const coords = getCanvasCoords(e);
       startImageCoords = coords;
 
+      // 選択中オブジェクトのハンドル操作
       if (state.selectedId) {
         const selectedAnno = state.annotations.find(a => a.id === state.selectedId);
         if (selectedAnno) {
@@ -1849,6 +2083,26 @@
       if (state.activeTool !== 'select') {
         const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
 
+        // ---- 移動ツール：スワイプで枠を作成 ----
+        if (state.activeTool === 'move') {
+          isDrawing = true;
+          currentAnnotation = {
+            id, type: 'move',
+            srcX: coords.x, srcY: coords.y,
+            srcW: 0, srcH: 0,
+            x: coords.x, y: coords.y,
+            w: 0, h: 0,
+            rotation: 0,
+            shadow: 0
+          };
+          state.annotations.push(currentAnnotation);
+          pendingSelectId = id;
+          bringToFront(id);
+          renderAnnotations();
+          return;
+        }
+
+        // ---- テキスト ----
         if (state.activeTool === 'text') {
           const newAnno = {
             id, type: 'text',
@@ -1872,6 +2126,7 @@
           return;
         }
 
+        // ---- 四角 ----
         if (state.activeTool === 'rect') {
           isDrawing = true;
           currentAnnotation = {
@@ -1892,6 +2147,7 @@
           return;
         }
 
+        // ---- 隠す ----
         if (state.activeTool === 'hide') {
           isDrawing = true;
           currentAnnotation = {
@@ -1907,6 +2163,7 @@
           return;
         }
 
+        // ---- 矢印 ----
         if (state.activeTool === 'arrow') {
           isDrawing = true;
           currentAnnotation = {
@@ -1926,28 +2183,9 @@
           renderAnnotations();
           return;
         }
-
-        // 「移動」ツール：切り取り範囲を指定
-        if (state.activeTool === 'move') {
-          isDrawing = true;
-          currentAnnotation = {
-            id, type: 'move',
-            srcX: coords.x, srcY: coords.y,
-            srcW: 0, srcH: 0,
-            x: coords.x, y: coords.y,
-            w: 0, h: 0,
-            aspect: 1,
-            rotation: 0,
-            shadow: 0
-          };
-          state.annotations.push(currentAnnotation);
-          pendingSelectId = id;
-          bringToFront(id);
-          renderAnnotations();
-          return;
-        }
       }
 
+      // ---- 既存オブジェクトのドラッグ ----
       const hitAnno = getHitAnnotation(coords);
       if (hitAnno) {
         pendingSelectId = hitAnno.id;
@@ -2045,6 +2283,9 @@
             selectedAnno.rotation = snapRotation(raw);
           } else {
             applyRectResize(selectedAnno, initialObjState, transformHandle, dx, dy);
+            if (selectedAnno.type === 'move') {
+              syncMoveSrc(selectedAnno, initialObjState, transformHandle);
+            }
           }
         } else if (selectedAnno.type === 'arrow') {
           if (transformHandle === 'p1') {
@@ -2072,7 +2313,11 @@
         const dx = coords.x - startImageCoords.x;
         const dy = coords.y - startImageCoords.y;
 
-        if (isBoxType(selectedAnno.type) || selectedAnno.type === 'text') {
+        if (selectedAnno.type === 'move') {
+          // 移動先のみ移動可能（切り取り元は固定）
+          selectedAnno.x = initialObjState.x + dx;
+          selectedAnno.y = initialObjState.y + dy;
+        } else if (isBoxType(selectedAnno.type) || selectedAnno.type === 'text') {
           selectedAnno.x = initialObjState.x + dx;
           selectedAnno.y = initialObjState.y + dy;
         } else if (selectedAnno.type === 'arrow') {
@@ -2084,6 +2329,28 @@
         renderAnnotations();
       }
     });
+
+    // 四隅ハンドルで移動注釈をリサイズしたとき、src を同期
+    function syncMoveSrc(target, initial, handle) {
+      const newW = target.w;
+      const newH = target.h;
+
+      if (handle === 'se') {
+        target.srcX = initial.srcX;
+        target.srcY = initial.srcY;
+      } else if (handle === 'nw') {
+        target.srcX = initial.srcX + initial.srcW - newW;
+        target.srcY = initial.srcY + initial.srcH - newH;
+      } else if (handle === 'ne') {
+        target.srcX = initial.srcX;
+        target.srcY = initial.srcY + initial.srcH - newH;
+      } else if (handle === 'sw') {
+        target.srcX = initial.srcX + initial.srcW - newW;
+        target.srcY = initial.srcY;
+      }
+      target.srcW = newW;
+      target.srcH = newH;
+    }
 
     function applyRectResize(target, s, handle, dx, dy) {
       const th = (s.rotation || 0) * Math.PI / 180;
@@ -2101,7 +2368,7 @@
       nw = Math.max(10, nw);
       nh = Math.max(10, nh);
 
-      if ((s.type === 'image' || s.type === 'move') && s.aspect) {
+      if (s.type === 'image' && s.aspect) {
         const wFromH = nh * s.aspect;
         nw = (Math.abs(nw - s.w) >= Math.abs(wFromH - s.w)) ? nw : wFromH;
         nw = Math.max(20, nw);
@@ -2173,7 +2440,9 @@
         let discard = false;
 
         if (currentAnnotation &&
-            (currentAnnotation.type === 'rect' || currentAnnotation.type === 'hide')) {
+            (currentAnnotation.type === 'rect' ||
+             currentAnnotation.type === 'hide' ||
+             currentAnnotation.type === 'move')) {
           if (currentAnnotation.w < 0) {
             currentAnnotation.x += currentAnnotation.w;
             currentAnnotation.w = Math.abs(currentAnnotation.w);
@@ -2182,11 +2451,11 @@
             currentAnnotation.y += currentAnnotation.h;
             currentAnnotation.h = Math.abs(currentAnnotation.h);
           }
-        }
-
-        if (currentAnnotation && currentAnnotation.type === 'move') {
-          if (currentAnnotation.w > 0 && currentAnnotation.h > 0) {
-            currentAnnotation.aspect = currentAnnotation.w / currentAnnotation.h;
+          if (currentAnnotation.type === 'move') {
+            currentAnnotation.srcX = currentAnnotation.x;
+            currentAnnotation.srcY = currentAnnotation.y;
+            currentAnnotation.srcW = currentAnnotation.w;
+            currentAnnotation.srcH = currentAnnotation.h;
           }
         }
 
@@ -2234,6 +2503,11 @@
     function getHitAnnotation(coords) {
       for (let i = state.annotations.length - 1; i >= 0; i--) {
         const a = state.annotations[i];
+
+        if (a.type === 'move') {
+          if (isPointInRect(coords, a.x, a.y, a.w, a.h)) return a;
+          continue;
+        }
 
         if (isBoxType(a.type)) {
           const c = getRotCenter(a);
@@ -2284,6 +2558,19 @@
       const off = 34 / state.scale;
 
       if (isBoxType(a.type)) {
+        if (a.type === 'move') {
+          const corners = [
+            { id: 'nw', x: a.x, y: a.y },
+            { id: 'ne', x: a.x + a.w, y: a.y },
+            { id: 'se', x: a.x + a.w, y: a.y + a.h },
+            { id: 'sw', x: a.x, y: a.y + a.h }
+          ];
+          corners.forEach(p => {
+            handles.push({ id: p.id, x: p.x, y: p.y });
+          });
+          return handles;
+        }
+
         const corners = [
           { id: 'nw', x: a.x, y: a.y },
           { id: 'ne', x: a.x + a.w, y: a.y },
@@ -2294,10 +2581,8 @@
           const w = localToWorld(a, p.x, p.y);
           handles.push({ id: p.id, x: w.x, y: w.y });
         });
-        if (a.type !== 'move') {
-          const r = localToWorld(a, a.x + a.w / 2, a.y - off);
-          handles.push({ id: 'rot', x: r.x, y: r.y });
-        }
+        const r = localToWorld(a, a.x + a.w / 2, a.y - off);
+        handles.push({ id: 'rot', x: r.x, y: r.y });
       } else if (a.type === 'text') {
         const topY = a.y - a.size / 2;
         const r = localToWorld(a, a.x, topY - off);
@@ -2312,8 +2597,15 @@
     function getHitHandle(coords, a) {
       const handleSize = 26 / state.scale;
       const handles = getHandles(a);
+
+      let effective = handleSize;
+      if (a.type === 'move') {
+        const minSide = Math.min(Math.abs(a.w), Math.abs(a.h));
+        effective = Math.min(handleSize, minSide / 3);
+      }
+
       for (const h of handles) {
-        if (Math.hypot(coords.x - h.x, coords.y - h.y) < handleSize) {
+        if (Math.hypot(coords.x - h.x, coords.y - h.y) < effective) {
           return h.id;
         }
       }
@@ -2350,6 +2642,15 @@
     function renderAnnotations() {
       annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
 
+      // Pass 1: 移動の切り取り跡（常に最背面）
+      state.annotations.forEach(a => {
+        if (a.type === 'move') {
+          const isDrawingThis = (a === currentAnnotation) && isDrawing;
+          if (!isDrawingThis) drawMoveHole(annoCtx, a);
+        }
+      });
+
+      // Pass 2: 各注釈
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
           drawRoundedRect(annoCtx, a);
@@ -2365,13 +2666,72 @@
           drawImageAnno(annoCtx, a);
           annoCtx.restore();
         } else if (a.type === 'move') {
-          drawMove(annoCtx, a);
+          const isDrawingThis = (a === currentAnnotation) && isDrawing;
+          if (isDrawingThis) {
+            drawMoveDrawingPreview(annoCtx, a);
+          } else {
+            drawMoveContent(annoCtx, a);
+          }
         }
 
         if (a.id === state.selectedId) {
           drawSelectionBounds(a);
         }
       });
+
+      // Pass 3: グリッド（最前面・白＋黒のペア）
+      if (state.gridVisible) {
+        drawGrid(annoCtx);
+      }
+    }
+
+    function drawGrid(ctx) {
+      const imgW = state.imgWidth;
+      const imgH = state.imgHeight;
+      if (!imgW || !imgH) return;
+
+      const unit = Math.min(imgW, imgH) / 12;
+      if (unit < 2) return;
+
+      const sc = state.scale || 1;
+      const halfPx = 0.5 / sc;   // 白線と黒線の間隔（画像座標）
+      const lineW = 1 / sc;      // 1px 相当の線幅
+
+      ctx.save();
+      ctx.lineWidth = lineW;
+      ctx.lineCap = 'butt';
+
+      // 白線（位置の手前側）
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.beginPath();
+      for (let x = unit; x < imgW - 0.5; x += unit) {
+        const px = x - halfPx;
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, imgH);
+      }
+      for (let y = unit; y < imgH - 0.5; y += unit) {
+        const py = y - halfPx;
+        ctx.moveTo(0, py);
+        ctx.lineTo(imgW, py);
+      }
+      ctx.stroke();
+
+      // 黒線（位置の奥側）
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.beginPath();
+      for (let x = unit; x < imgW - 0.5; x += unit) {
+        const px = x + halfPx;
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, imgH);
+      }
+      for (let y = unit; y < imgH - 0.5; y += unit) {
+        const py = y + halfPx;
+        ctx.moveTo(0, py);
+        ctx.lineTo(imgW, py);
+      }
+      ctx.stroke();
+
+      ctx.restore();
     }
 
     function drawRoundedRect(ctx, a) {
@@ -2452,40 +2812,45 @@
       ctx.restore();
     }
 
-    // 「移動」：切り取り元を「隠す」塗りで埋め、切り取った内容を別位置へ描画
-    function drawMove(ctx, a) {
-      const sw = Math.abs(a.srcW);
-      const sh = Math.abs(a.srcH);
-      const dw = Math.abs(a.w);
-      const dh = Math.abs(a.h);
-      if (sw < 0.5 || sh < 0.5 || dw < 0.5 || dh < 0.5) return;
-
-      const srcX = Math.min(a.srcX, a.srcX + a.srcW);
-      const srcY = Math.min(a.srcY, a.srcY + a.srcH);
+    function drawMoveHole(ctx, a) {
+      const w = Math.abs(a.srcW);
+      const h = Math.abs(a.srcH);
+      if (w < 0.5 || h < 0.5) return;
 
       const moved = Math.abs(a.x - a.srcX) > 0.5 || Math.abs(a.y - a.srcY) > 0.5;
+      if (!moved) return;
 
-      // 切り取った跡を「隠す」で埋める
-      if (moved) {
-        const hole = getMoveHoleFill(a);
-        if (hole && hole.width) {
-          ctx.save();
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(hole, 0, 0, hole.width, hole.height, srcX, srcY, sw, sh);
-          ctx.restore();
-        }
-      }
+      const hole = getMoveHoleFill(a);
+      if (!hole || !hole.width) return;
 
-      // 切り取った内容を移動先へ描画
-      if (state.image) {
-        ctx.save();
-        applyShadow(ctx, a);
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(state.image, srcX, srcY, sw, sh, a.x, a.y, dw, dh);
-        ctx.restore();
-      }
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(hole, 0, 0, hole.width, hole.height, a.srcX, a.srcY, w, h);
+      ctx.restore();
+    }
+
+    function drawMoveContent(ctx, a) {
+      const w = Math.abs(a.w);
+      const h = Math.abs(a.h);
+      if (w < 0.5 || h < 0.5) return;
+      if (!bgCanvas.width || !bgCanvas.height) return;
+
+      ctx.save();
+      applyShadow(ctx, a);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(bgCanvas, a.srcX, a.srcY, Math.abs(a.srcW), Math.abs(a.srcH), a.x, a.y, w, h);
+      ctx.restore();
+    }
+
+    function drawMoveDrawingPreview(ctx, a) {
+      ctx.save();
+      ctx.setLineDash([10 / state.scale, 7 / state.scale]);
+      ctx.strokeStyle = 'rgba(10, 132, 255, 0.95)';
+      ctx.lineWidth = 2 / state.scale;
+      ctx.strokeRect(a.x, a.y, a.w, a.h);
+      ctx.restore();
     }
 
     function drawImageAnno(ctx, a) {
@@ -2501,7 +2866,7 @@
 
     function drawArrow(ctx, a) {
       const angle = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
-      const headLen = a.arrowSize || 20;
+      const headLen = a.arrowSize || 0;
       const useEnds = a.arrowEnds === true;
 
       const drawPath = () => {
@@ -2510,27 +2875,31 @@
           ctx.moveTo(a.x1, a.y1);
           ctx.lineTo(a.x2, a.y2);
 
-          const perp = angle + Math.PI / 2;
-          const hx = Math.cos(perp) * headLen / 2;
-          const hy = Math.sin(perp) * headLen / 2;
+          if (headLen > 0) {
+            const perp = angle + Math.PI / 2;
+            const hx = Math.cos(perp) * headLen / 2;
+            const hy = Math.sin(perp) * headLen / 2;
 
-          ctx.moveTo(a.x1 - hx, a.y1 - hy);
-          ctx.lineTo(a.x1 + hx, a.y1 + hy);
+            ctx.moveTo(a.x1 - hx, a.y1 - hy);
+            ctx.lineTo(a.x1 + hx, a.y1 + hy);
 
-          ctx.moveTo(a.x2 - hx, a.y2 - hy);
-          ctx.lineTo(a.x2 + hx, a.y2 + hy);
+            ctx.moveTo(a.x2 - hx, a.y2 - hy);
+            ctx.lineTo(a.x2 + hx, a.y2 + hy);
+          }
         } else {
           ctx.moveTo(a.x1, a.y1);
           ctx.lineTo(a.x2, a.y2);
-          ctx.lineTo(
-            a.x2 - headLen * Math.cos(angle - Math.PI / 6),
-            a.y2 - headLen * Math.sin(angle - Math.PI / 6)
-          );
-          ctx.moveTo(a.x2, a.y2);
-          ctx.lineTo(
-            a.x2 - headLen * Math.cos(angle + Math.PI / 6),
-            a.y2 - headLen * Math.sin(angle + Math.PI / 6)
-          );
+          if (headLen > 0) {
+            ctx.lineTo(
+              a.x2 - headLen * Math.cos(angle - Math.PI / 6),
+              a.y2 - headLen * Math.sin(angle - Math.PI / 6)
+            );
+            ctx.moveTo(a.x2, a.y2);
+            ctx.lineTo(
+              a.x2 - headLen * Math.cos(angle + Math.PI / 6),
+              a.y2 - headLen * Math.sin(angle + Math.PI / 6)
+            );
+          }
         }
       };
 
@@ -2607,7 +2976,21 @@
 
       const handleR = 7 / state.scale;
 
-      if (isBoxType(a.type)) {
+      if (a.type === 'move') {
+        annoCtx.save();
+        annoCtx.setLineDash([8 / state.scale, 6 / state.scale]);
+        annoCtx.strokeStyle = 'rgba(10, 132, 255, 0.45)';
+        annoCtx.lineWidth = 1.5 / state.scale;
+        annoCtx.strokeRect(a.srcX, a.srcY, Math.abs(a.srcW), Math.abs(a.srcH));
+        annoCtx.restore();
+
+        annoCtx.save();
+        annoCtx.setLineDash([]);
+        annoCtx.strokeStyle = '#0a84ff';
+        annoCtx.lineWidth = 2 / state.scale;
+        annoCtx.strokeRect(a.x, a.y, a.w, a.h);
+        annoCtx.restore();
+      } else if (isBoxType(a.type)) {
         withRotation(annoCtx, a, () => {
           annoCtx.strokeRect(a.x, a.y, a.w, a.h);
         });
@@ -2616,16 +2999,6 @@
         withRotation(annoCtx, a, () => {
           annoCtx.strokeRect(a.x - m.w / 2 - 4, a.y - a.size / 2 - 4, m.w + 8, a.size + 8);
         });
-      }
-
-      // 「移動」：切り取り元を点線で表示
-      if (a.type === 'move') {
-        annoCtx.save();
-        annoCtx.setLineDash([7 / state.scale, 5 / state.scale]);
-        annoCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-        annoCtx.lineWidth = 1.5 / state.scale;
-        annoCtx.strokeRect(a.srcX, a.srcY, a.srcW, a.srcH);
-        annoCtx.restore();
       }
 
       const handles = getHandles(a);
@@ -2732,7 +3105,7 @@
       }
 
       if (a.type === 'arrow') {
-        setSliderRange(arrowSlider, state.ranges.arrowSize, a.arrowSize || state.ranges.arrowSize.min);
+        setSliderRange(arrowSlider, state.ranges.arrowSize, (a.arrowSize != null) ? a.arrowSize : 0);
         btnArrowEnds.classList.toggle('active', !!a.arrowEnds);
       }
 
@@ -2961,7 +3334,12 @@
       newAnno.id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
 
       const offset = Math.max(10, 24 / state.scale);
-      if (isBoxType(newAnno.type) || newAnno.type === 'text') {
+      if (newAnno.type === 'move') {
+        newAnno.x += offset;
+        newAnno.y += offset;
+        newAnno.srcX += offset;
+        newAnno.srcY += offset;
+      } else if (isBoxType(newAnno.type) || newAnno.type === 'text') {
         newAnno.x += offset;
         newAnno.y += offset;
       } else if (newAnno.type === 'arrow') {
@@ -3118,7 +3496,10 @@
     function applyNudge(dx, dy) {
       const a = state.annotations.find(x => x.id === state.selectedId);
       if (!a) return;
-      if (isBoxType(a.type) || a.type === 'text') {
+      if (a.type === 'move') {
+        a.x += dx;
+        a.y += dy;
+      } else if (isBoxType(a.type) || a.type === 'text') {
         a.x += dx;
         a.y += dy;
       } else if (a.type === 'arrow') {
@@ -3168,18 +3549,20 @@
       });
     }
 
-    btnDelete.addEventListener('click', () => {
-      if (state.selectedId) {
-        state.annotations = state.annotations.filter(a => a.id !== state.selectedId);
-        state.selectedId = null;
-        updateUI();
-        saveHistory();
-        renderAnnotations();
-      }
-    });
+    function deleteSelected() {
+      const a = state.annotations.find(x => x.id === state.selectedId);
+      if (!a) return;
+      state.annotations = state.annotations.filter(x => x.id !== a.id);
+      state.selectedId = null;
+      updateUI();
+      saveHistory();
+      renderAnnotations();
+    }
+
+    btnDelete.addEventListener('click', deleteSelected);
 
     // -------------------------------------------------------------
-    // 新規（別の画像の編集を開始）
+    // 新規
     // -------------------------------------------------------------
     function startNewProject() {
       state.image = null;
@@ -3189,12 +3572,15 @@
       state.panX = 0;
       state.panY = 0;
       state.annotations = [];
+      state.confirmed = [];
       state.selectedId = null;
       state.history = [];
       state.historyIndex = -1;
       state.originalFileSize = 0;
       state.originalFileType = '';
       srcPixels = null;
+      hideFillCache = new WeakMap();
+      moveHoleCache = new WeakMap();
 
       imageRegistry.clear();
       activePointers.clear();
@@ -3232,7 +3618,7 @@
     }
 
     btnNew.addEventListener('click', () => {
-      if (state.image && state.annotations.length > 0) {
+      if (state.image && (state.annotations.length > 0 || state.confirmed.length > 0)) {
         if (!confirm('編集内容を破棄して、新規で始めますか？')) return;
       }
       startNewProject();
@@ -3287,8 +3673,19 @@
       exportCanvas.height = state.imgHeight;
       const exportCtx = exportCanvas.getContext('2d');
 
-      exportCtx.drawImage(state.image, 0, 0);
+      // 背景（元画像＋確定済み注釈）を描画
+      if (bgCanvas.width && bgCanvas.height) {
+        exportCtx.drawImage(bgCanvas, 0, 0);
+      } else if (state.image) {
+        exportCtx.drawImage(state.image, 0, 0);
+      }
 
+      // Pass 1: 移動の切り取り跡
+      state.annotations.forEach(a => {
+        if (a.type === 'move') drawMoveHole(exportCtx, a);
+      });
+
+      // Pass 2: 各注釈（グリッドは描画しない）
       state.annotations.forEach(a => {
         if (a.type === 'rect') {
           drawRoundedRect(exportCtx, a);
@@ -3304,7 +3701,7 @@
           drawImageAnno(exportCtx, a);
           exportCtx.restore();
         } else if (a.type === 'move') {
-          drawMove(exportCtx, a);
+          drawMoveContent(exportCtx, a);
         }
       });
 
@@ -3350,9 +3747,6 @@
       });
     });
 
-    // -------------------------------------------------------------
-    // Web Share API で PNG ファイルを共有
-    // -------------------------------------------------------------
     async function shareExportImage() {
       if (!state.image) return;
 
@@ -3410,9 +3804,6 @@
 
     btnShareImage.addEventListener('click', shareExportImage);
 
-    // -------------------------------------------------------------
-    // クリップボードへコピー
-    // -------------------------------------------------------------
     async function copyExportImage() {
       if (!state.image) return;
 
@@ -3449,9 +3840,6 @@
 
     btnCopyImage.addEventListener('click', copyExportImage);
 
-    // -------------------------------------------------------------
-    // モーダルの外側タップで閉じる
-    // -------------------------------------------------------------
     saveModal.addEventListener('click', (e) => {
       if (e.target === saveModal) {
         saveModal.classList.remove('active');
